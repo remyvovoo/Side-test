@@ -111,32 +111,32 @@ code{background:var(--panel2);padding:1px 5px;border-radius:4px;font-size:11px}
       <h3>Support</h3>
       <div class="seg"><button id="mStand" class="on" onclick="setMount('stand')">Pied acrylique</button><button id="mCase" onclick="setMount('case')">Boîtier</button></div>
       <div class="row" style="margin-top:11px">
-        <div class="lab"><span>Hauteur des montants</span><b id="vLh">0.22</b></div>
-        <input type="range" id="sLh" min="8" max="45" value="22">
+        <div class="lab"><span>Hauteur des montants</span><b id="vLh">0.20</b></div>
+        <input type="range" id="sLh" min="8" max="34" value="20">
       </div>
       <div class="row">
-        <div class="lab"><span>Largeur des montants</span><b id="vLw">0.040</b></div>
-        <input type="range" id="sLw" min="15" max="90" value="40">
+        <div class="lab"><span>Largeur des montants</span><b id="vLw">0.038</b></div>
+        <input type="range" id="sLw" min="18" max="70" value="38">
       </div>
       <div class="row">
-        <div class="lab"><span>Épaisseur des montants</span><b id="vLt">0.014</b></div>
-        <input type="range" id="sLt" min="5" max="40" value="14">
+        <div class="lab"><span>Épaisseur des montants</span><b id="vLt">0.012</b></div>
+        <input type="range" id="sLt" min="6" max="28" value="12">
       </div>
       <div class="row">
-        <div class="lab"><span>Écartement</span><b id="vLs">0.24</b></div>
-        <input type="range" id="sLs" min="10" max="40" value="24">
+        <div class="lab"><span>Écartement</span><b id="vLs">0.23</b></div>
+        <input type="range" id="sLs" min="14" max="34" value="23">
       </div>
       <div class="row">
-        <div class="lab"><span>Inclinaison du support</span><b id="vLi">9°</b></div>
-        <input type="range" id="sLi" min="0" max="20" value="9">
+        <div class="lab"><span>Inclinaison du support</span><b id="vLi">8°</b></div>
+        <input type="range" id="sLi" min="0" max="16" value="8">
       </div>
       <div class="row">
-        <div class="lab"><span>Rayon de la base</span><b id="vBr">0.50</b></div>
-        <input type="range" id="sBr" min="30" max="75" value="50">
+        <div class="lab"><span>Rayon de la base</span><b id="vBr">0.46</b></div>
+        <input type="range" id="sBr" min="34" max="62" value="46">
       </div>
       <div class="row">
         <div class="lab"><span>Distance caméra</span><b id="vDz">1.00</b></div>
-        <input type="range" id="sDz" min="70" max="180" value="100">
+        <input type="range" id="sDz" min="85" max="135" value="100">
       </div>
       <div class="hint">Les montants d'un vrai présentoir montent au tiers bas de la carte, pas plus.</div>
     </div>
@@ -157,8 +157,8 @@ code{background:var(--panel2);padding:1px 5px;border-radius:4px;font-size:11px}
         <input type="range" id="sPitch" min="0" max="25" value="6">
       </div>
       <div class="row">
-        <div class="lab"><span>Focale (mm équiv.)</span><b id="vFoc">85</b></div>
-        <input type="range" id="sFoc" min="35" max="135" value="85">
+        <div class="lab"><span>Focale (mm équiv.)</span><b id="vFoc">80</b></div>
+        <input type="range" id="sFoc" min="45" max="110" value="80">
       </div>
       <div class="hint">Une longue focale (85–135) écrase le fond et détache le sujet. C'est le réglage du photographe produit.</div>
     </div>
@@ -166,16 +166,12 @@ code{background:var(--panel2);padding:1px 5px;border-radius:4px;font-size:11px}
     <div class="grp">
       <h3>Acrylique</h3>
       <div class="row">
-        <div class="lab"><span>Transmission</span><b id="vTr">0.96</b></div>
-        <input type="range" id="sTr" min="0" max="100" value="96">
+        <div class="lab"><span>Opacité du plexi</span><b id="vOp">0.24</b></div>
+        <input type="range" id="sOp" min="4" max="60" value="24">
       </div>
       <div class="row">
-        <div class="lab"><span>Épaisseur (thickness)</span><b id="vTh">0.35</b></div>
-        <input type="range" id="sTh" min="0" max="200" value="35">
-      </div>
-      <div class="row">
-        <div class="lab"><span>Indice de réfraction (IOR)</span><b id="vIor">1.49</b></div>
-        <input type="range" id="sIor" min="100" max="200" value="149">
+        <div class="lab"><span>Brillance des arêtes</span><b id="vEg">1.00</b></div>
+        <input type="range" id="sEg" min="20" max="250" value="100">
       </div>
       <div class="row">
         <div class="lab"><span>Rugosité</span><b id="vRo">0.04</b></div>
@@ -185,7 +181,7 @@ code{background:var(--panel2);padding:1px 5px;border-radius:4px;font-size:11px}
         <div class="lab"><span>Vernis (clearcoat)</span><b id="vCc">1.00</b></div>
         <input type="range" id="sCc" min="0" max="100" value="100">
       </div>
-      <div class="hint">L'IOR du PMMA (plexiglas) vaut 1.49. Transmission élevée + rugosité basse = arêtes brillantes.</div>
+      <div class="hint">Un présentoir fin est translucide, pas transparent comme du cristal. Ses arêtes brillent : c'est la brillance qui donne l'effet plexi.</div>
     </div>
 
     <div class="grp">
@@ -265,11 +261,11 @@ import { Reflector } from 'three/addons/objects/Reflector.js';
 
 /* ══════════ CONFIG ══════════ */
 const P = {
-  mount:'stand', angleSign:0, rot:16, pitch:6, focal:85, dz:1.0,
-  transmission:.96, thickness:.35, ior:1.49, roughness:.04, clearcoat:1,
+  mount:'stand', angleSign:0, rot:16, pitch:6, focal:80, dz:1.0,
+  opacity:.24, roughness:.04, clearcoat:1, edgeGlow:1.0,
   keyI:6, fillI:2.5, rimI:4, ambI:.25, exposure:1.15,
   holo:.55, sat:1.05, refl:.45, vig:.55,
-  legH:.22, legW:.040, legT:.014, legSpread:.24, legTilt:9, baseR:.50,
+  legH:.20, legW:.038, legT:.012, legSpread:.23, legTilt:8, baseR:.46,
   bgTop:'#0a0a10', bgBot:'#000000', spot:'#cdd7f0'
 };
 let geoDirty = false;
@@ -285,24 +281,24 @@ const PRESETS = {
 const LOOKS = [
   { name:'A · Doux',
     hint:"Éclairage latéral doux, plexi discret. Le plus proche d'une vitrine.",
-    p:{ transmission:.94, thickness:.30, ior:1.49, roughness:.06, clearcoat:.9,
+    p:{ opacity:.18, edgeGlow:.85, roughness:.07, clearcoat:.9,
         keyI:5.0, fillI:2.8, rimI:2.6, ambI:.34, exposure:1.20,
         holo:.42, sat:1.04, refl:.38, vig:.44 } },
   { name:'B · Contrasté',
     hint:"Clair-obscur marqué, la carte sort du noir. Style AccessoiresFigurines.",
-    p:{ transmission:.96, thickness:.38, ior:1.49, roughness:.03, clearcoat:1.0,
-        keyI:7.5, fillI:1.4, rimI:5.5, ambI:.16, exposure:1.10,
-        holo:.58, sat:1.10, refl:.50, vig:.66 } },
+    p:{ opacity:.24, edgeGlow:1.35, roughness:.03, clearcoat:1.0,
+        keyI:7.0, fillI:1.5, rimI:5.0, ambI:.15, exposure:1.12,
+        holo:.55, sat:1.08, refl:.48, vig:.64 } },
   { name:'C · Cristallin',
-    hint:"Plexi très présent, arêtes brillantes, beaucoup de reflets.",
-    p:{ transmission:.99, thickness:.55, ior:1.52, roughness:.01, clearcoat:1.0,
-        keyI:8.5, fillI:3.6, rimI:6.5, ambI:.22, exposure:1.28,
-        holo:.72, sat:1.12, refl:.58, vig:.50 } },
+    hint:"Plexi très présent, arêtes très brillantes, beaucoup de reflets.",
+    p:{ opacity:.34, edgeGlow:2.10, roughness:.01, clearcoat:1.0,
+        keyI:7.8, fillI:3.2, rimI:5.8, ambI:.24, exposure:1.22,
+        holo:.68, sat:1.10, refl:.55, vig:.48 } },
   { name:'D · Sombre',
     hint:"Ambiance nocturne, un seul faisceau. Dramatique, pour les cartes rares.",
-    p:{ transmission:.95, thickness:.34, ior:1.49, roughness:.04, clearcoat:1.0,
-        keyI:9.0, fillI:0.5, rimI:3.2, ambI:.08, exposure:0.98,
-        holo:.62, sat:1.02, refl:.42, vig:.78 } }
+    p:{ opacity:.20, edgeGlow:1.10, roughness:.04, clearcoat:1.0,
+        keyI:8.5, fillI:0.6, rimI:3.0, ambI:.08, exposure:1.02,
+        holo:.58, sat:1.02, refl:.40, vig:.76 } }
 ];
 
 /* ══════════ SCÈNE ══════════ */
@@ -324,25 +320,25 @@ const pmrem = new THREE.PMREMGenerator(renderer);
 pmrem.compileEquirectangularShader();
 
 /* ══════════ MATÉRIAUX ══════════ */
+/* Acrylique translucide — PAS de transmission.
+   Raison : plusieurs meshes à transmission qui se recouvrent saturent le
+   transmissionRenderTarget de Three.js (socle blanc opaque, 14 fps).
+   Un présentoir fin se rend très bien en translucide brillant : on voit à
+   travers, et ce sont les arêtes qui captent la lumière. */
 function acrylicMat(){
   return new THREE.MeshPhysicalMaterial({
-    color: 0xffffff,
+    color: 0xdce8f5,
     metalness: 0,
     roughness: P.roughness,
-    transmission: P.transmission,
-    thickness: P.thickness,
-    ior: P.ior,
     clearcoat: P.clearcoat,
-    clearcoatRoughness: .02,
+    clearcoatRoughness: 0.03,
     transparent: true,
-    opacity: 1,
-    envMapIntensity: 2.4,
+    opacity: P.opacity,
+    envMapIntensity: 3.2,       // c'est lui qui fait briller les arêtes
     specularIntensity: 1,
+    reflectivity: 0.6,
     side: THREE.DoubleSide,
-    attenuationColor: new THREE.Color(0xf4f8ff),
-    attenuationDistance: 12
-    // NOTE: pas de depthWrite:false — ça casse le tri de profondeur des meshes
-    // à transmission dans Three.js et fait passer le socle devant la carte.
+    depthWrite: false           // sûr ici : plus de transmission
   });
 }
 let acrylic = acrylicMat();
@@ -453,20 +449,21 @@ function bladeGeometry(w, h, t, tilt){
 function buildStand(){
   clearGroup(standGroup);
 
-  const bR    = P.baseR * CARD_W;      // rayon socle
-  const baseT = CARD_W * 0.030;        // épaisseur socle : fine
+  const bR    = P.baseR * CARD_W;
+  const baseT = CARD_W * 0.026;        // socle fin
   const cardBottom = -CARD_H/2;
-  const baseTop = cardBottom;          // la carte repose SUR le socle
-  const baseY = baseTop - baseT/2;
+  const baseY = cardBottom - baseT/2;  // la carte repose dessus
 
-  // socle : plaque plate, décalée vers l'avant (le poids est devant la carte)
+  // Socle : ellipse aplatie, centrée sous la carte (pas de décalage +z :
+  // c'est ce décalage qui le faisait traverser la carte).
   const base = new THREE.Mesh(
-    new THREE.CylinderGeometry(bR, bR*0.99, baseT, 80, 1),
+    new THREE.CylinderGeometry(bR, bR*0.985, baseT, 72, 1),
     acrylic
   );
-  base.position.set(0, baseY, bR*0.30);   // décalé en +z = vers la caméra
-  base.castShadow = true; base.receiveShadow = true;
-  base.renderOrder = 2;
+  base.scale.z = 0.62;                 // ovale, comme un vrai socle de présentoir
+  base.position.set(0, baseY, 0);
+  base.receiveShadow = true;
+  base.renderOrder = 1;
   standGroup.add(base);
 
   const lh   = P.legH * CARD_H;
@@ -477,43 +474,27 @@ function buildStand(){
   [-1, 1].forEach(s => {
     const x = s * P.legSpread * CARD_W;
 
-    // Lame verticale : part du socle et remonte DEVANT la carte,
-    // très fine, elle la retient. C'est ce qu'on voit sur les vraies photos.
-    const blade = new THREE.Mesh(
-      new THREE.BoxGeometry(lw, lh, lt),
-      acrylic
-    );
-    // pivot au pied de la lame
-    blade.geometry.translate(0, lh/2, 0);
-    blade.position.set(x, baseTop, CARD_T/2 + lt/2 + 0.002);
-    blade.rotation.x = -tilt;   // s'écarte légèrement en montant
-    blade.castShadow = true;
-    blade.renderOrder = 3;
+    // Lame fine devant la carte : c'est elle qui la retient.
+    const bladeGeo = new THREE.BoxGeometry(lw, lh, lt);
+    bladeGeo.translate(0, lh/2, 0);    // pivot au pied
+    const blade = new THREE.Mesh(bladeGeo, acrylic);
+    blade.position.set(x, cardBottom, CARD_T/2 + lt/2 + 0.003);
+    blade.rotation.x = -tilt;
+    blade.renderOrder = 3;             // devant la carte
     standGroup.add(blade);
 
-    // pied qui relie la lame au socle, posé à plat
-    const footLen = bR * 0.55;
-    const foot = new THREE.Mesh(
-      new THREE.BoxGeometry(lw, lt, footLen),
-      acrylic
-    );
-    foot.position.set(x, baseTop + lt/2, CARD_T/2 + footLen/2);
-    foot.castShadow = true;
+    // Semelle qui relie la lame au socle
+    const footLen = bR * 0.50;
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(lw, lt*0.9, footLen), acrylic);
+    foot.position.set(x, cardBottom + lt*0.45, CARD_T/2 + footLen/2);
     foot.renderOrder = 2;
     standGroup.add(foot);
-  });
 
-  // Butée arrière : deux petits ergots contre lesquels la carte s'appuie
-  [-1, 1].forEach(s => {
-    const x = s * P.legSpread * CARD_W;
-    const stopH = CARD_H * 0.05;
-    const stop = new THREE.Mesh(
-      new THREE.BoxGeometry(lw*1.4, stopH, lt),
-      acrylic
-    );
-    stop.position.set(x, baseTop + stopH/2, -CARD_T/2 - lt/2 - 0.002);
-    stop.castShadow = true;
-    stop.renderOrder = 1;   // derrière la carte
+    // Ergot arrière : la carte s'y appuie
+    const stopH = CARD_H * 0.045;
+    const stop = new THREE.Mesh(new THREE.BoxGeometry(lw*1.3, stopH, lt), acrylic);
+    stop.position.set(x, cardBottom + stopH/2, -CARD_T/2 - lt/2 - 0.003);
+    stop.renderOrder = 0;              // derrière la carte
     standGroup.add(stop);
   });
 }
@@ -529,45 +510,59 @@ const screwMat = new THREE.MeshPhysicalMaterial({
 
 function buildCase(){
   clearGroup(caseGroup);
-  const M = CARD_W * 0.095;
-  const PW = CARD_W + M*2, PH = CARD_H + M*2, PT = 0.042;
+  const M = CARD_W * 0.09;
+  const PW = CARD_W + M*2, PH = CARD_H + M*2, PT = 0.038;
 
-  [-1, 1].forEach(s => {
-    const plate = new THREE.Mesh(new THREE.BoxGeometry(PW, PH, PT), acrylic);
-    plate.position.z = s * (CARD_T/2 + PT/2 + 0.003);
-    plate.castShadow = true; plate.receiveShadow = true;
-    caseGroup.add(plate);
-  });
+  // plaque arrière (derrière la carte)
+  const backPlate = new THREE.Mesh(new THREE.BoxGeometry(PW, PH, PT), acrylic);
+  backPlate.position.z = -(CARD_T/2 + PT/2 + 0.002);
+  backPlate.renderOrder = 0;
+  caseGroup.add(backPlate);
 
-  const screwLen = CARD_T + PT*2 + 0.02;
+  // plaque avant (devant la carte)
+  const frontPlate = new THREE.Mesh(new THREE.BoxGeometry(PW, PH, PT), acrylic);
+  frontPlate.position.z = CARD_T/2 + PT/2 + 0.002;
+  frontPlate.renderOrder = 3;
+  caseGroup.add(frontPlate);
+
+  // vis d'angle
+  const screwLen = CARD_T + PT*2 + 0.015;
   [[-1,-1],[1,-1],[-1,1],[1,1]].forEach(([sx, sy]) => {
-    const sc = new THREE.Mesh(new THREE.CylinderGeometry(M*0.28, M*0.28, screwLen, 28), screwMat);
+    const sc = new THREE.Mesh(new THREE.CylinderGeometry(M*0.26, M*0.26, screwLen, 24), screwMat);
     sc.rotation.x = Math.PI/2;
-    sc.position.set(sx*(PW/2 - M*0.5), sy*(PH/2 - M*0.5), 0);
-    sc.castShadow = true;
+    sc.position.set(sx*(PW/2 - M*0.48), sy*(PH/2 - M*0.48), 0);
+    sc.renderOrder = 4;
     caseGroup.add(sc);
   });
 
-  // socle du boîtier
-  const bR = P.baseR * CARD_W * 1.1;
-  const baseT = 0.045;
-  const base = new THREE.Mesh(new THREE.CylinderGeometry(bR, bR*1.02, baseT, 96), acrylic);
-  base.position.y = -PH/2 - baseT/2;
-  base.castShadow = true;
+  // socle
+  const bR = P.baseR * CARD_W * 1.08;
+  const baseT = CARD_W * 0.026;
+  const bottom = -PH/2;
+  const base = new THREE.Mesh(new THREE.CylinderGeometry(bR, bR*0.985, baseT, 72), acrylic);
+  base.scale.z = 0.62;
+  base.position.set(0, bottom - baseT/2, 0);
+  base.renderOrder = 1;
   caseGroup.add(base);
 
-  const lh = P.legH * CARD_H * 0.72;
+  // lames de maintien
+  const lh = P.legH * CARD_H * 0.55;
   const lw = P.legW * CARD_W;
   const lt = P.legT * CARD_W;
   const tilt = P.legTilt * Math.PI/180;
   [-1, 1].forEach(s => {
-    const blade = new THREE.Mesh(bladeGeometry(lw, lh, lt, tilt), acrylic);
-    blade.position.set(s * P.legSpread * CARD_W, -PH/2, PT + CARD_T/2 + 0.004);
+    const x = s * P.legSpread * CARD_W;
+    const g = new THREE.BoxGeometry(lw, lh, lt);
+    g.translate(0, lh/2, 0);
+    const blade = new THREE.Mesh(g, acrylic);
+    blade.position.set(x, bottom, PT + CARD_T/2 + lt/2 + 0.004);
     blade.rotation.x = -tilt;
+    blade.renderOrder = 3;
     caseGroup.add(blade);
-    const footL = bR*0.6;
-    const foot = new THREE.Mesh(new THREE.BoxGeometry(lw, lt*1.2, footL), acrylic);
-    foot.position.set(s * P.legSpread * CARD_W, -PH/2 + lt*0.6, footL/2);
+    const footLen = bR * 0.48;
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(lw, lt*0.9, footLen), acrylic);
+    foot.position.set(x, bottom + lt*0.45, PT + CARD_T/2 + footLen/2);
+    foot.renderOrder = 2;
     caseGroup.add(foot);
   });
 }
@@ -578,8 +573,9 @@ buildCase();
 /* ══════════ SOL RÉFLÉCHISSANT ══════════ */
 const floorY = -CARD_H/2 - 0.05;
 // Miroir réel : capture la scène (carte + support) et la renvoie
+// 512 suffit largement pour un reflet flouté par le voile, et double le fps.
 const mirror = new Reflector(new THREE.PlaneGeometry(24,24), {
-  textureWidth: 1024, textureHeight: 1024, color: 0x333340
+  textureWidth: 512, textureHeight: 512, color: 0x2a2a34
 });
 mirror.rotation.x = -Math.PI/2;
 mirror.position.y = floorY;
@@ -622,7 +618,7 @@ function softbox(color, intensity, pos, target){
   const l = new THREE.DirectionalLight(color, intensity);
   l.position.set(...pos);
   l.castShadow = true;
-  l.shadow.mapSize.set(2048,2048);
+  l.shadow.mapSize.set(1024,1024);
   l.shadow.camera.near = .5; l.shadow.camera.far = 20;
   l.shadow.camera.left = -3; l.shadow.camera.right = 3;
   l.shadow.camera.top = 3; l.shadow.camera.bottom = -3;
@@ -633,6 +629,7 @@ function softbox(color, intensity, pos, target){
 }
 const keyLight  = softbox(0xffffff, P.keyI,  [-3.2, 3.4, 3.6]);
 const fillLight = softbox(0xdbe6ff, P.fillI, [ 3.4, 1.6, 2.8]);
+fillLight.castShadow = false;   // une seule source d'ombre : c'est le key
 const rimLight  = softbox(0xffffff, P.rimI,  [ 0.4, 2.4,-4.2]);
 rimLight.castShadow = false;
 
@@ -697,11 +694,13 @@ composer.addPass(gradePass);
 function updateCamera(){
   const fov = 2 * Math.atan(24 / (2 * P.focal)) * 180/Math.PI;
   camera.fov = fov;
-  // dist calculée pour cadrer la carte, puis multipliée par le recul
-  const dist = ((CARD_H*0.95) / (2*Math.tan(fov*Math.PI/360))) * P.dz;
+  // Le sujet à cadrer, c'est la carte + son socle, pas la carte seule.
+  const subjectH = CARD_H * 1.16;
+  const dist = ((subjectH) / (2*Math.tan(fov*Math.PI/360))) * P.dz;
   const pitch = P.pitch*Math.PI/180;
-  camera.position.set(0, Math.sin(pitch)*dist + CARD_H*0.04, Math.cos(pitch)*dist);
-  camera.lookAt(0, -CARD_H*0.06, 0);
+  const lookY = -CARD_H*0.08;   // légèrement sous le centre : on voit le socle
+  camera.position.set(0, lookY + Math.sin(pitch)*dist, Math.cos(pitch)*dist);
+  camera.lookAt(0, lookY, 0);
   camera.updateProjectionMatrix();
 }
 function resize(){
@@ -716,11 +715,10 @@ addEventListener('resize', resize);
 
 /* ══════════ APPLICATION DES RÉGLAGES ══════════ */
 function applyAll(){
-  acrylic.transmission = P.transmission;
-  acrylic.thickness = P.thickness;
-  acrylic.ior = P.ior;
+  acrylic.opacity = P.opacity;
   acrylic.roughness = P.roughness;
   acrylic.clearcoat = P.clearcoat;
+  acrylic.envMapIntensity = 3.2 * P.edgeGlow;
   acrylic.needsUpdate = true;
 
   cardGroup.traverse(o=>{
@@ -780,9 +778,8 @@ const f2 = v=>v.toFixed(2), f1 = v=>v.toFixed(1), fd = v=>Math.round(v)+'°', fi
 bind('sRot','rot',fd);
 bind('sPitch','pitch',fd);
 bind('sFoc','focal',fi);
-bind('sTr','transmission',f2,0.01);
-bind('sTh','thickness',f2,0.01);
-bind('sIor','ior',f2,0.01);
+bind('sOp','opacity',f2,0.01);
+bind('sEg','edgeGlow',f2,0.01);
 bind('sRo','roughness',f2,0.01);
 bind('sCc','clearcoat',f2,0.01);
 bind('sK','keyI',f1,0.1);
@@ -820,8 +817,8 @@ window.applyPreset = p=>{ Object.assign(P, PRESETS[p]); applyAll(); };
 
 /* Recharge les curseurs depuis P (après un changement de look) */
 const SLIDER_MAP = {
-  sTr:['transmission',.01,f2], sTh:['thickness',.01,f2], sIor:['ior',.01,f2],
-  sRo:['roughness',.01,f2],    sCc:['clearcoat',.01,f2],
+  sOp:['opacity',.01,f2], sEg:['edgeGlow',.01,f2],
+  sRo:['roughness',.01,f2], sCc:['clearcoat',.01,f2],
   sK:['keyI',.1,f1], sF:['fillI',.1,f1], sR:['rimI',.1,f1],
   sA:['ambI',.01,f2], sE:['exposure',.01,f2],
   sHl:['holo',.01,f2], sSt:['sat',.01,f2],
@@ -860,7 +857,7 @@ function dump(){
   const d = {mount:P.mount, angle:P.angleSign, rot:P.rot, pitch:P.pitch, focal:P.focal, dz:+P.dz.toFixed(2),
     legH:+P.legH.toFixed(2), legW:+P.legW.toFixed(3), legT:+P.legT.toFixed(3),
     legSpread:+P.legSpread.toFixed(2), legTilt:P.legTilt, baseR:+P.baseR.toFixed(2),
-    transmission:+P.transmission.toFixed(2), thickness:+P.thickness.toFixed(2), ior:+P.ior.toFixed(2),
+    opacity:+P.opacity.toFixed(2), edgeGlow:+P.edgeGlow.toFixed(2),
     roughness:+P.roughness.toFixed(2), clearcoat:+P.clearcoat.toFixed(2),
     keyI:+P.keyI.toFixed(1), fillI:+P.fillI.toFixed(1), rimI:+P.rimI.toFixed(1),
     ambI:+P.ambI.toFixed(2), exposure:+P.exposure.toFixed(2),

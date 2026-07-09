@@ -165,6 +165,15 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;b
 #validateImg{max-width:100%;max-height:320px;display:block;filter:drop-shadow(0 10px 24px rgba(0,0,0,0.5))}
 .validate-actions{display:flex;flex-direction:column;gap:8px;max-width:340px;margin:0 auto}
 
+/* ═══ Écran 2a — Recadrage ═══ */
+.crop-stage{position:relative;border-radius:14px;overflow:hidden;margin:0 auto 1rem;max-width:360px;background:repeating-conic-gradient(#1a1926 0% 25%,#232235 0% 50%) 0 0/22px 22px;touch-action:none}
+#cropCanvas{width:100%;display:block;cursor:crosshair}
+.crop-hint{font-size:12px;color:var(--text-muted);text-align:center;margin-bottom:1rem;line-height:1.5}
+.crop-toolbar{display:flex;gap:8px;max-width:360px;margin:0 auto 10px}
+.crop-tool{flex:1;padding:9px;border-radius:10px;border:0.5px solid var(--border-strong);background:var(--surface);color:var(--text-secondary);font-size:12px;font-weight:500;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;font-family:inherit}
+.crop-tool:hover{border-color:var(--accent);color:var(--text)}
+.crop-tool.active{border-color:var(--accent);background:var(--accent-light);color:var(--accent)}
+
 /* ═══ Écran 3 — Personnalisation ═══ */
 .custo-layout{display:flex;flex-direction:column;gap:1.25rem}
 @media(min-width:900px){
@@ -352,13 +361,18 @@ input[type=range]::-moz-range-thumb{width:17px;height:17px;border-radius:50%;bac
     </div>
   </div>
 
-  <!-- ═══ ÉCRAN 2a : VALIDATION ═══ -->
+  <!-- ═══ ÉCRAN 2a : VALIDATION + RECADRAGE ═══ -->
   <div class="screen" id="screen-validate">
-    <div class="screen-title" style="text-align:center">Ta carte est prête !</div>
-    <div class="screen-sub" style="text-align:center">Vérifie que les contours sont propres.</div>
-    <div class="validate-stage"><img id="validateImg" alt="Ta carte détourée"></div>
+    <div class="screen-title" style="text-align:center">Ta carte est prête</div>
+    <div class="screen-sub" style="text-align:center">Ajuste les coins si le découpage déborde (toploader, dalle…).</div>
+    <div class="crop-toolbar">
+      <button class="crop-tool active" id="toolAuto" onclick="resetCrop()"><i class="ti ti-wand"></i> Découpage auto</button>
+      <button class="crop-tool" id="toolManual" onclick="enableManualCrop()"><i class="ti ti-crop"></i> Ajuster les coins</button>
+    </div>
+    <div class="crop-stage"><canvas id="cropCanvas"></canvas></div>
+    <div class="crop-hint" id="cropHint">Le découpage automatique a détecté les contours de ta carte.</div>
     <div class="validate-actions">
-      <button class="btn btn-primary" onclick="go('customize')"><i class="ti ti-check"></i> C'est parfait, continuer</button>
+      <button class="btn btn-primary" onclick="applyCrop()"><i class="ti ti-check"></i> C'est parfait, continuer</button>
       <button class="btn btn-ghost" onclick="go('source')"><i class="ti ti-camera"></i> Reprendre la photo</button>
     </div>
   </div>
@@ -459,6 +473,7 @@ input[type=range]::-moz-range-thumb{width:17px;height:17px;border-radius:50%;bac
     <div class="tip"><div class="tip-emoji">☀️</div><div class="tip-text"><b>Lumière naturelle</b> — près d'une fenêtre. Jamais de flash : il crée des reflets sur les cartes brillantes.</div></div>
     <div class="tip"><div class="tip-emoji">⬜</div><div class="tip-text"><b>Fond uni contrasté</b> — feuille blanche sous une carte sombre, sombre sous une carte claire.</div></div>
     <div class="tip"><div class="tip-emoji">📐</div><div class="tip-text"><b>Vue de dessus</b> — carte bien à plat, les 4 coins visibles dans l'image.</div></div>
+    <div class="tip"><div class="tip-emoji">🃏</div><div class="tip-text"><b>Retire la sleeve et le toploader</b> — le plastique crée des reflets et brouille les contours. Garde la dalle si ta carte est gradée.</div></div>
     <label class="modal-check"><input type="checkbox" id="skipGuide"><span>Ne plus afficher ces conseils</span></label>
     <button class="btn btn-primary" id="guideCta" onclick="proceedGuide()">C'est parti</button>
   </div>
@@ -553,57 +568,66 @@ function shade(hex, f) {
   var b = Math.min(255, Math.round(parseInt(hex.slice(5,7),16)*f));
   return 'rgb('+r+','+g+','+b+')';
 }
+function rr(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);ctx.closePath();}
+function val(id){return document.getElementById(id).value.trim();}
 
+/* Fond : rendu basse résolution puis upscalé = flou d'arrière-plan naturel */
 function drawStudioBg(ctx, W, H, t, sa) {
-  var horizonY = H * 0.62;
-  var wall = ctx.createLinearGradient(0, 0, 0, horizonY * 1.15);
-  wall.addColorStop(0, t.wt); wall.addColorStop(0.66, t.wm); wall.addColorStop(1, t.horizon);
-  ctx.fillStyle = wall; ctx.fillRect(0, 0, W, horizonY + 2);
-  var floorG = ctx.createLinearGradient(0, horizonY, 0, H);
-  floorG.addColorStop(0, t.horizon); floorG.addColorStop(0.18, shade(t.wm, 0.55)); floorG.addColorStop(1, t.fl);
-  ctx.fillStyle = floorG; ctx.fillRect(0, horizonY, W, H - horizonY);
-  if (sa > 0) {
-    var spot = ctx.createRadialGradient(W/2, H*0.34, 0, W/2, H*0.34, W*0.46);
-    spot.addColorStop(0, 'rgba('+t.spot+','+(sa*0.34)+')');
-    spot.addColorStop(0.55, 'rgba('+t.spot+','+(sa*0.10)+')');
-    spot.addColorStop(1, 'rgba('+t.spot+',0)');
-    ctx.fillStyle = spot;
-    ctx.beginPath(); ctx.ellipse(W/2, H*0.34, W*0.46, H*0.40, 0, 0, 7); ctx.fill();
-    var pool = ctx.createRadialGradient(W/2, H*0.80, 0, W/2, H*0.80, W*0.34);
-    pool.addColorStop(0, 'rgba('+t.spot+','+(sa*0.10)+')');
-    pool.addColorStop(1, 'rgba('+t.spot+',0)');
-    ctx.fillStyle = pool;
-    ctx.beginPath(); ctx.ellipse(W/2, H*0.80, W*0.34, H*0.13, 0, 0, 7); ctx.fill();
-  }
-  if (t.fx === 'stars') { for (var i=0;i<26;i++){ ctx.fillStyle='rgba(220,228,255,'+(0.12+Math.random()*0.3)+')'; ctx.beginPath(); ctx.arc(W*Math.random(), horizonY*0.8*Math.random(), Math.random()*1.1+0.3, 0, 7); ctx.fill(); } }
-  if (t.fx === 'embers') { for (var j=0;j<10;j++){ ctx.fillStyle='rgba(255,170,80,'+(0.10+Math.random()*0.22)+')'; ctx.beginPath(); ctx.arc(W*Math.random(), H*(0.15+Math.random()*0.45), Math.random()*1.4+0.4, 0, 7); ctx.fill(); } }
-  if (t.fx === 'rays') { for (var k=-2;k<=2;k++){ var rx=W/2+k*W*0.13; var ray=ctx.createLinearGradient(rx,0,rx+W*0.05,horizonY); ray.addColorStop(0,'rgba(255,220,150,0.05)'); ray.addColorStop(1,'rgba(255,220,150,0)'); ctx.fillStyle=ray; ctx.fillRect(rx, 0, W*0.035, horizonY); } }
-  var vig = ctx.createRadialGradient(W/2, H*0.45, W*0.28, W/2, H*0.5, W*0.75);
-  vig.addColorStop(0, 'rgba(0,0,0,0)'); vig.addColorStop(1, 'rgba(0,0,0,0.42)');
-  ctx.fillStyle = vig; ctx.fillRect(0, 0, W, H);
+  var DS = 8, lw = Math.ceil(W/DS), lh = Math.ceil(H/DS);
+  var low = document.createElement('canvas'); low.width=lw; low.height=lh;
+  var lc = low.getContext('2d');
+  var hz = lh * 0.60;
+  var wall = lc.createLinearGradient(0,0,0,hz*1.2);
+  wall.addColorStop(0,t.wt); wall.addColorStop(0.62,t.wm); wall.addColorStop(1,t.horizon);
+  lc.fillStyle=wall; lc.fillRect(0,0,lw,hz+1);
+  var fg = lc.createLinearGradient(0,hz,0,lh);
+  fg.addColorStop(0,t.horizon); fg.addColorStop(0.16,shade(t.wm,0.5)); fg.addColorStop(1,t.fl);
+  lc.fillStyle=fg; lc.fillRect(0,hz,lw,lh-hz);
+  var sp = lc.createRadialGradient(lw/2,lh*0.30,0,lw/2,lh*0.30,lw*0.5);
+  sp.addColorStop(0,'rgba('+t.spot+','+(sa*0.30)+')'); sp.addColorStop(1,'rgba('+t.spot+',0)');
+  lc.fillStyle=sp; lc.fillRect(0,0,lw,lh);
+  ctx.imageSmoothingEnabled = true;
+  ctx.drawImage(low, 0, 0, W, H);
+  ctx.fillStyle='rgba(0,0,0,0.18)'; ctx.fillRect(0,0,W,H);
+  if (t.fx==='stars') { for (var i=0;i<24;i++){ ctx.fillStyle='rgba(220,228,255,'+(0.10+Math.random()*0.26)+')'; ctx.beginPath(); ctx.arc(W*Math.random(), H*0.5*Math.random(), Math.random()*1.1+0.3, 0, 7); ctx.fill(); } }
+  if (t.fx==='embers') { for (var j=0;j<9;j++){ ctx.fillStyle='rgba(255,170,80,'+(0.08+Math.random()*0.18)+')'; ctx.beginPath(); ctx.arc(W*Math.random(), H*(0.12+Math.random()*0.42), Math.random()*1.3+0.4, 0, 7); ctx.fill(); } }
+  var g = ctx.getImageData(0,0,W,H), d=g.data;
+  for (var k=0;k<d.length;k+=4){ var n=(Math.random()-0.5)*7; d[k]+=n; d[k+1]+=n; d[k+2]+=n; }
+  ctx.putImageData(g,0,0);
+  var vg = ctx.createRadialGradient(W/2,H*0.44,W*0.22,W/2,H*0.5,W*0.72);
+  vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,0.55)');
+  ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
 }
 
+/* Rim light : découpe la carte du fond */
+function drawRim(ctx, cx, cy, dw, dh, t, a) {
+  var r = Math.max(dw,dh)*0.72;
+  var g = ctx.createRadialGradient(cx, cy, r*0.42, cx, cy, r);
+  g.addColorStop(0,'rgba('+t.spot+','+(a*0.30)+')');
+  g.addColorStop(0.5,'rgba('+t.spot+','+(a*0.10)+')');
+  g.addColorStop(1,'rgba('+t.spot+',0)');
+  ctx.fillStyle=g;
+  ctx.beginPath(); ctx.ellipse(cx, cy, r*0.85, r, 0, 0, 7); ctx.fill();
+}
+
+/* Socle : largeur = carte × 1.18 */
 function drawPodium(ctx, cx, topY, w, t) {
-  var h = w * 0.085, ry = w * 0.055;
-  var sh = ctx.createRadialGradient(cx, topY+h+ry*0.6, 0, cx, topY+h+ry*0.6, w*0.85);
-  sh.addColorStop(0, 'rgba(0,0,0,0.5)'); sh.addColorStop(1, 'rgba(0,0,0,0)');
-  ctx.fillStyle = sh;
-  ctx.beginPath(); ctx.ellipse(cx, topY+h+ry*0.6, w*0.85, ry*2.6, 0, 0, 7); ctx.fill();
+  var h = w*0.055, ry = w*0.048;
+  var sh=ctx.createRadialGradient(cx,topY+h+ry,0,cx,topY+h+ry,w*0.95);
+  sh.addColorStop(0,'rgba(0,0,0,0.6)'); sh.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=sh; ctx.beginPath(); ctx.ellipse(cx,topY+h+ry,w*0.95,ry*2.2,0,0,7); ctx.fill();
   ctx.beginPath();
-  ctx.moveTo(cx-w/2, topY);
-  ctx.lineTo(cx-w/2, topY+h);
-  ctx.ellipse(cx, topY+h, w/2, ry, 0, Math.PI, 0, true);
-  ctx.lineTo(cx+w/2, topY);
-  ctx.closePath();
-  var body = ctx.createLinearGradient(cx-w/2, 0, cx+w/2, 0);
-  body.addColorStop(0, shade(t.pod, 0.5)); body.addColorStop(0.5, shade(t.pod, 1.15)); body.addColorStop(1, shade(t.pod, 0.45));
-  ctx.fillStyle = body; ctx.fill();
-  var topG = ctx.createRadialGradient(cx, topY, 0, cx, topY, w*0.55);
-  topG.addColorStop(0, shade(t.pod, 2.1)); topG.addColorStop(1, shade(t.pod, 1.2));
-  ctx.fillStyle = topG;
-  ctx.beginPath(); ctx.ellipse(cx, topY, w/2, ry, 0, 0, 7); ctx.fill();
-  ctx.strokeStyle = 'rgba(255,255,255,0.10)'; ctx.lineWidth = 1.2;
-  ctx.beginPath(); ctx.ellipse(cx, topY, w/2, ry, 0, 0, 7); ctx.stroke();
+  ctx.moveTo(cx-w/2,topY); ctx.lineTo(cx-w/2,topY+h);
+  ctx.ellipse(cx,topY+h,w/2,ry,0,Math.PI,0,true);
+  ctx.lineTo(cx+w/2,topY); ctx.closePath();
+  var b=ctx.createLinearGradient(cx-w/2,0,cx+w/2,0);
+  b.addColorStop(0,shade(t.pod,0.45)); b.addColorStop(0.5,shade(t.pod,1.3)); b.addColorStop(1,shade(t.pod,0.4));
+  ctx.fillStyle=b; ctx.fill();
+  var tg=ctx.createRadialGradient(cx,topY,0,cx,topY,w*0.55);
+  tg.addColorStop(0,shade(t.pod,2.4)); tg.addColorStop(1,shade(t.pod,1.25));
+  ctx.fillStyle=tg; ctx.beginPath(); ctx.ellipse(cx,topY,w/2,ry,0,0,7); ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,0.14)'; ctx.lineWidth=1.3;
+  ctx.beginPath(); ctx.ellipse(cx,topY,w/2,ry,0,0,7); ctx.stroke();
 }
 
 function drawBadge(ctx, W, H) {
@@ -629,53 +653,47 @@ function renderStudio(canvas, img) {
   drawStudioBg(ctx, W, H, t, S.halo);
 
   var iw=img.naturalWidth||img.width, ih=img.naturalHeight||img.height;
-  var sc=Math.min((W*0.46)/iw,(H*0.60)/ih);
+  var sc = (H*0.605)/ih;
+  if (iw*sc > W*0.62) sc = (W*0.62)/iw;
   var dw=iw*sc, dh=ih*sc;
-  var cx=W/2;
-  var podTop=H*0.755;
-  var podW=dw*1.45;
-  drawPodium(ctx, cx, podTop, podW, t);
-
+  var cx=W/2, podTop=H*0.775, podW=dw*1.18;
   var dx=cx-dw/2, dy=podTop-dh;
 
-  var cs=ctx.createRadialGradient(cx,podTop,0,cx,podTop,dw*0.62);
-  cs.addColorStop(0,'rgba(0,0,0,0.55)'); cs.addColorStop(1,'rgba(0,0,0,0)');
-  ctx.fillStyle=cs;
-  ctx.beginPath(); ctx.ellipse(cx,podTop,dw*0.62,podW*0.045,0,0,7); ctx.fill();
+  drawRim(ctx, cx, dy+dh*0.45, dw, dh, t, S.halo);
+  drawPodium(ctx, cx, podTop, podW, t);
+
+  var cs=ctx.createRadialGradient(cx,podTop,0,cx,podTop,dw*0.55);
+  cs.addColorStop(0,'rgba(0,0,0,0.68)'); cs.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=cs; ctx.beginPath(); ctx.ellipse(cx,podTop,dw*0.55,podW*0.038,0,0,7); ctx.fill();
 
   ctx.save();
   if (S.tilt>0){ ctx.translate(cx,podTop); var a=S.tilt*Math.PI/180; ctx.transform(1,0,Math.sin(a)*0.28,Math.cos(a),0,0); ctx.translate(-cx,-podTop); }
 
   if (S.reflect>0){
-    var refH=Math.round(dh*0.5);
+    var refH=Math.round(dh*0.34);
     var off=document.createElement('canvas'); off.width=Math.max(1,Math.round(dw)); off.height=refH;
     var oc=off.getContext('2d');
     oc.save(); oc.scale(1,-1); oc.drawImage(img,0,-dh,dw,dh); oc.restore();
     var mask=oc.createLinearGradient(0,0,0,refH);
-    mask.addColorStop(0,'rgba(0,0,0,'+(0.5*S.reflect)+')');
-    mask.addColorStop(1,'rgba(0,0,0,0)');
-    oc.globalCompositeOperation='destination-in';
-    oc.fillStyle=mask; oc.fillRect(0,0,off.width,refH);
-    ctx.drawImage(off,dx,podTop+4);
+    mask.addColorStop(0,'rgba(0,0,0,'+(0.55*S.reflect)+')'); mask.addColorStop(1,'rgba(0,0,0,0)');
+    oc.globalCompositeOperation='destination-in'; oc.fillStyle=mask; oc.fillRect(0,0,off.width,refH);
+    ctx.drawImage(off,dx,podTop+3);
   }
 
-  ctx.shadowColor='rgba(0,0,0,0.55)'; ctx.shadowBlur=34; ctx.shadowOffsetY=10;
+  ctx.shadowColor='rgba(0,0,0,0.6)'; ctx.shadowBlur=40; ctx.shadowOffsetY=14;
   ctx.drawImage(img,dx,dy,dw,dh);
   ctx.shadowColor='transparent';
   ctx.restore();
 
   var name=val('fName'), num=val('fNum'), price=val('fPrice'), rar=val('fRarity');
   if (name||num||price||rar) {
-    var line1=name||'Ma carte';
-    var line2=[num,rar].filter(Boolean).join('  ·  ');
-    ctx.font='600 24px -apple-system,sans-serif';
-    var w1=ctx.measureText(line1).width;
-    ctx.font='15px -apple-system,sans-serif';
-    var w2=ctx.measureText(line2).width;
+    var line1=name||'Ma carte', line2=[num,rar].filter(Boolean).join('  ·  ');
+    ctx.font='600 24px -apple-system,sans-serif'; var w1=ctx.measureText(line1).width;
+    ctx.font='15px -apple-system,sans-serif'; var w2=line2?ctx.measureText(line2).width:0;
     var tw=Math.max(w1,w2)+44, th=line2?84:62, tx=28, ty=H-th-28;
     ctx.fillStyle='rgba(7,5,22,0.85)'; rr(ctx,tx,ty,tw,th,14); ctx.fill();
     ctx.fillStyle='#fff'; ctx.font='600 24px -apple-system,sans-serif';
-    ctx.fillText(line1, tx+20, ty+38);
+    ctx.fillText(line1, tx+20, line2?ty+38:ty+40);
     if (line2){ ctx.font='15px -apple-system,sans-serif'; ctx.fillStyle='rgba(255,255,255,0.55)'; ctx.fillText(line2, tx+20, ty+66); }
     if (price){
       ctx.font='700 28px -apple-system,sans-serif';
@@ -685,11 +703,8 @@ function renderStudio(canvas, img) {
       ctx.fillText(price, tx+tw+12+pw/2, ty+th/2+10); ctx.textAlign='left';
     }
   }
-
   drawBadge(ctx, W, H);
 }
-function rr(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.lineTo(x+w-r,y);ctx.quadraticCurveTo(x+w,y,x+w,y+r);ctx.lineTo(x+w,y+h-r);ctx.quadraticCurveTo(x+w,y+h,x+w-r,y+h);ctx.lineTo(x+r,y+h);ctx.quadraticCurveTo(x,y+h,x,y+h-r);ctx.lineTo(x,y+r);ctx.quadraticCurveTo(x,y,x+r,y);ctx.closePath();}
-function val(id){return document.getElementById(id).value.trim();}
 function renderMain(){ if(S.detoured) renderStudio(document.getElementById('mainCanvas'),S.detoured); }
 
 /* ═══════════ NAVIGATION ═══════════ */
@@ -816,8 +831,8 @@ async function runPipeline(blob){
     img.onload=function(){
       clearInterval(msgTimer);
       S.detoured=img;
-      document.getElementById('validateImg').src=img.src;
       go('validate');
+      openCropEditor(img);
     };
     img.onerror=function(){ showError('Impossible de lire le résultat.'); };
     img.src=URL.createObjectURL(result);
@@ -837,6 +852,125 @@ function showError(msg){
   document.getElementById('errorBox').style.display='block';
 }
 function retryProcess(){ if(S.sourceBlob) startProcess(S.sourceBlob); }
+
+/* ═══════════ RECADRAGE (auto + manuel) ═══════════ */
+var CROP = { img:null, corners:null, manual:false, drag:-1, scale:1 };
+
+/* Détection auto : boîte englobante des pixels opaques du PNG détouré */
+function autoDetectBounds(img) {
+  var MAX=320;
+  var s=Math.min(MAX/img.width, MAX/img.height, 1);
+  var w=Math.max(1,Math.round(img.width*s)), h=Math.max(1,Math.round(img.height*s));
+  var c=document.createElement('canvas'); c.width=w; c.height=h;
+  var ctx=c.getContext('2d'); ctx.drawImage(img,0,0,w,h);
+  var d=ctx.getImageData(0,0,w,h).data;
+  var minX=w, minY=h, maxX=0, maxY=0, found=false;
+  for (var y=0;y<h;y++) for (var x=0;x<w;x++) {
+    if (d[(y*w+x)*4+3] > 24) {
+      found=true;
+      if (x<minX) minX=x; if (x>maxX) maxX=x;
+      if (y<minY) minY=y; if (y>maxY) maxY=y;
+    }
+  }
+  if (!found) return [{x:0,y:0},{x:img.width,y:0},{x:img.width,y:img.height},{x:0,y:img.height}];
+  var k=1/s;
+  var x0=minX*k, y0=minY*k, x1=(maxX+1)*k, y1=(maxY+1)*k;
+  return [{x:x0,y:y0},{x:x1,y:y0},{x:x1,y:y1},{x:x0,y:y1}];
+}
+
+function openCropEditor(img) {
+  CROP.img=img; CROP.manual=false; CROP.drag=-1;
+  CROP.corners=autoDetectBounds(img);
+  setCropTool(false);
+  drawCropCanvas();
+}
+
+function setCropTool(manual) {
+  CROP.manual=manual;
+  document.getElementById('toolAuto').classList.toggle('active',!manual);
+  document.getElementById('toolManual').classList.toggle('active',manual);
+  document.getElementById('cropHint').textContent = manual
+    ? 'Fais glisser les 4 poignées pour ajuster le cadre.'
+    : 'Le découpage automatique a détecté les contours de ta carte.';
+  drawCropCanvas();
+}
+function enableManualCrop(){ setCropTool(true); }
+function resetCrop(){ CROP.corners=autoDetectBounds(CROP.img); setCropTool(false); }
+
+function drawCropCanvas() {
+  var img=CROP.img; if(!img) return;
+  var canvas=document.getElementById('cropCanvas');
+  var MAXW=720;
+  var s=Math.min(MAXW/img.width, 1);
+  var W=Math.round(img.width*s), H=Math.round(img.height*s);
+  CROP.scale=s;
+  canvas.width=W; canvas.height=H;
+  var ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,W,H);
+  ctx.drawImage(img,0,0,W,H);
+
+  var c=CROP.corners.map(function(p){return {x:p.x*s, y:p.y*s};});
+  ctx.save();
+  ctx.fillStyle='rgba(0,0,0,0.5)';
+  ctx.beginPath(); ctx.rect(0,0,W,H);
+  ctx.moveTo(c[0].x,c[0].y); ctx.lineTo(c[3].x,c[3].y); ctx.lineTo(c[2].x,c[2].y); ctx.lineTo(c[1].x,c[1].y);
+  ctx.closePath(); ctx.fill('evenodd');
+  ctx.restore();
+
+  ctx.strokeStyle='#8b7cf8'; ctx.lineWidth=2;
+  ctx.beginPath(); ctx.moveTo(c[0].x,c[0].y);
+  for (var i=1;i<4;i++) ctx.lineTo(c[i].x,c[i].y);
+  ctx.closePath(); ctx.stroke();
+
+  if (CROP.manual) c.forEach(function(p){
+    ctx.fillStyle='#8b7cf8'; ctx.beginPath(); ctx.arc(p.x,p.y,9,0,7); ctx.fill();
+    ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(p.x,p.y,3.5,0,7); ctx.fill();
+  });
+}
+
+function cropPointer(e) {
+  var canvas=document.getElementById('cropCanvas');
+  var r=canvas.getBoundingClientRect();
+  var t=e.touches?e.touches[0]:e;
+  var k=canvas.width/r.width;
+  return { x:(t.clientX-r.left)*k/CROP.scale, y:(t.clientY-r.top)*k/CROP.scale };
+}
+function cropDown(e) {
+  if (!CROP.manual) return;
+  e.preventDefault();
+  var p=cropPointer(e), best=-1, bd=1e9;
+  CROP.corners.forEach(function(c,i){
+    var d=Math.hypot(c.x-p.x, c.y-p.y);
+    if (d<bd){ bd=d; best=i; }
+  });
+  if (bd < 60/CROP.scale) CROP.drag=best;
+}
+function cropMove(e) {
+  if (CROP.drag<0) return;
+  e.preventDefault();
+  var p=cropPointer(e);
+  var img=CROP.img;
+  CROP.corners[CROP.drag] = {
+    x: Math.max(0, Math.min(img.width, p.x)),
+    y: Math.max(0, Math.min(img.height, p.y))
+  };
+  drawCropCanvas();
+}
+function cropUp(){ CROP.drag=-1; }
+
+/* Applique le crop : transforme le quadrilatère en rectangle droit */
+function applyCrop() {
+  var img=CROP.img, c=CROP.corners;
+  var minX=Math.min(c[0].x,c[3].x), maxX=Math.max(c[1].x,c[2].x);
+  var minY=Math.min(c[0].y,c[1].y), maxY=Math.max(c[2].y,c[3].y);
+  var w=Math.max(8, Math.round(maxX-minX)), h=Math.max(8, Math.round(maxY-minY));
+  if (w>=img.width-2 && h>=img.height-2) { S.detoured=img; go('customize'); return; }
+  var out=document.createElement('canvas'); out.width=w; out.height=h;
+  out.getContext('2d').drawImage(img, minX, minY, w, h, 0, 0, w, h);
+  var res=new Image();
+  res.onload=function(){ S.detoured=res; go('customize'); };
+  res.src=out.toDataURL('image/png');
+}
 
 /* ═══════════ PERSONNALISATION ═══════════ */
 function toggleCollapse(id){ document.getElementById(id).classList.toggle('open'); }
@@ -904,6 +1038,13 @@ function toast(msg){
 }
 
 /* ═══════════ INIT ═══════════ */
+(function bindCrop(){
+  var c=document.getElementById('cropCanvas');
+  ['mousedown','touchstart'].forEach(function(ev){c.addEventListener(ev,cropDown,{passive:false});});
+  ['mousemove','touchmove'].forEach(function(ev){c.addEventListener(ev,cropMove,{passive:false});});
+  ['mouseup','mouseleave','touchend','touchcancel'].forEach(function(ev){c.addEventListener(ev,cropUp);});
+})();
+
 (function init(){
   // Vignettes univers
   var row=document.getElementById('themesRow');

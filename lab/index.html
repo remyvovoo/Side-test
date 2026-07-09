@@ -16,14 +16,29 @@ header{display:flex;align-items:center;justify-content:space-between;padding:12p
 .brand{display:flex;align-items:center;gap:9px;font-weight:600;font-size:14px}
 .dot{width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,#8b7cf8,#5a4cd0);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
 .tag{font-size:10px;padding:2px 8px;border-radius:20px;background:rgba(255,196,77,.12);color:#ffc44d;border:.5px solid rgba(255,196,77,.28);font-weight:500}
-main{flex:1;display:flex;flex-direction:column;gap:12px;padding:12px 16px 32px;max-width:1200px;margin:0 auto;width:100%}
-@media(min-width:1000px){main{flex-direction:row;align-items:flex-start}#stageWrap{flex:1.3;position:sticky;top:12px}#panel{flex:1;max-width:380px}}
-#stageWrap{position:relative;border-radius:14px;overflow:hidden;background:#000;aspect-ratio:1}
+main{flex:1;display:flex;flex-direction:column;gap:12px;padding:12px 16px 32px;max-width:1280px;margin:0 auto;width:100%}
+#stageWrap{position:relative;border-radius:14px;overflow:hidden;background:#000;aspect-ratio:1;flex-shrink:0}
+@media(min-width:1000px){
+  main{flex-direction:row;align-items:flex-start;height:calc(100vh - 56px);overflow:hidden;padding-bottom:12px}
+  #stageCol{flex:1.25;display:flex;flex-direction:column;gap:10px;min-width:0}
+  #stageWrap{width:100%;max-height:calc(100vh - 150px)}
+  #panel{flex:1;max-width:400px;overflow-y:auto;height:100%;padding-right:6px;padding-bottom:24px}
+  #panel::-webkit-scrollbar{width:6px}
+  #panel::-webkit-scrollbar-thumb{background:rgba(255,255,255,.14);border-radius:3px}
+}
+@media(max-width:999px){#stageWrap{position:sticky;top:8px;z-index:5;box-shadow:0 12px 40px rgba(0,0,0,.7)}}
 #stage{width:100%;height:100%;display:block}
 #loading{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;background:#0a0a10;font-size:13px;color:var(--dim)}
 .spin{width:26px;height:26px;border:2.5px solid rgba(139,124,248,.2);border-top-color:var(--acc);border-radius:50%;animation:sp .8s linear infinite}
 @keyframes sp{to{transform:rotate(360deg)}}
 #fps{position:absolute;top:8px;left:8px;font-size:10px;padding:3px 8px;border-radius:6px;background:rgba(0,0,0,.6);color:var(--dim);font-variant-numeric:tabular-nums}
+.looks{background:var(--panel);border:.5px solid var(--line);border-radius:12px;padding:12px}
+.looks-lab{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--dim);margin-bottom:9px}
+.looks-row{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.look{padding:10px 4px;border-radius:9px;border:.5px solid var(--line);background:var(--panel2);color:var(--dim);font-size:12px;font-weight:600;cursor:pointer;font-family:inherit}
+.look.on{border-color:var(--acc);background:rgba(139,124,248,.12);color:var(--acc)}
+.look:hover:not(.on){color:var(--txt)}
+.looks-hint{font-size:11px;color:var(--dim);margin-top:9px;line-height:1.45}
 .grp{background:var(--panel);border:.5px solid var(--line);border-radius:12px;padding:14px;margin-bottom:10px}
 .grp h3{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);margin-bottom:10px}
 .row{margin-bottom:11px}.row:last-child{margin-bottom:0}
@@ -59,10 +74,22 @@ code{background:var(--panel2);padding:1px 5px;border-radius:4px;font-size:11px}
 </header>
 
 <main>
-  <div id="stageWrap">
-    <canvas id="stage"></canvas>
-    <div id="loading"><div class="spin"></div><span>Chargement du moteur 3D…</span></div>
-    <div id="fps">–</div>
+  <div id="stageCol">
+    <div id="stageWrap">
+      <canvas id="stage"></canvas>
+      <div id="loading"><div class="spin"></div><span>Chargement du moteur 3D…</span></div>
+      <div id="fps">–</div>
+    </div>
+    <div class="looks">
+      <div class="looks-lab">Quel rendu se rapproche le plus de tes photos ?</div>
+      <div class="looks-row">
+        <button class="look on" data-look="0" onclick="setLook(0)">A · Doux</button>
+        <button class="look" data-look="1" onclick="setLook(1)">B · Contrasté</button>
+        <button class="look" data-look="2" onclick="setLook(2)">C · Cristallin</button>
+        <button class="look" data-look="3" onclick="setLook(3)">D · Sombre</button>
+      </div>
+      <div class="looks-hint" id="lookHint">Éclairage latéral doux, plexi discret. Le plus proche d'une vitrine.</div>
+    </div>
   </div>
 
   <div id="panel">
@@ -253,6 +280,31 @@ const PRESETS = {
   psy: {bgTop:'#0c0018',bgBot:'#06000c',spot:'#c882ff'}
 };
 
+/* Quatre directions esthétiques. Le fondateur choisit celle qui ressemble
+   le plus à ses références, on affine ensuite autour de la gagnante. */
+const LOOKS = [
+  { name:'A · Doux',
+    hint:"Éclairage latéral doux, plexi discret. Le plus proche d'une vitrine.",
+    p:{ transmission:.94, thickness:.30, ior:1.49, roughness:.06, clearcoat:.9,
+        keyI:5.0, fillI:2.8, rimI:2.6, ambI:.34, exposure:1.20,
+        holo:.42, sat:1.04, refl:.38, vig:.44 } },
+  { name:'B · Contrasté',
+    hint:"Clair-obscur marqué, la carte sort du noir. Style AccessoiresFigurines.",
+    p:{ transmission:.96, thickness:.38, ior:1.49, roughness:.03, clearcoat:1.0,
+        keyI:7.5, fillI:1.4, rimI:5.5, ambI:.16, exposure:1.10,
+        holo:.58, sat:1.10, refl:.50, vig:.66 } },
+  { name:'C · Cristallin',
+    hint:"Plexi très présent, arêtes brillantes, beaucoup de reflets.",
+    p:{ transmission:.99, thickness:.55, ior:1.52, roughness:.01, clearcoat:1.0,
+        keyI:8.5, fillI:3.6, rimI:6.5, ambI:.22, exposure:1.28,
+        holo:.72, sat:1.12, refl:.58, vig:.50 } },
+  { name:'D · Sombre',
+    hint:"Ambiance nocturne, un seul faisceau. Dramatique, pour les cartes rares.",
+    p:{ transmission:.95, thickness:.34, ior:1.49, roughness:.04, clearcoat:1.0,
+        keyI:9.0, fillI:0.5, rimI:3.2, ambI:.08, exposure:0.98,
+        holo:.62, sat:1.02, refl:.42, vig:.78 } }
+];
+
 /* ══════════ SCÈNE ══════════ */
 const canvas = document.getElementById('stage');
 const renderer = new THREE.WebGLRenderer({canvas, antialias:true, alpha:false, preserveDrawingBuffer:true});
@@ -284,12 +336,13 @@ function acrylicMat(){
     clearcoatRoughness: .02,
     transparent: true,
     opacity: 1,
-    envMapIntensity: 2.2,          // arêtes qui captent la lumière
+    envMapIntensity: 2.4,
     specularIntensity: 1,
-    side: THREE.FrontSide,          // FrontSide : moins d'artefacts sur les boîtes
-    attenuationColor: new THREE.Color(0xf2f7ff),
-    attenuationDistance: 8,         // très peu de teinte
-    depthWrite: false               // ne masque pas ce qui est derrière
+    side: THREE.DoubleSide,
+    attenuationColor: new THREE.Color(0xf4f8ff),
+    attenuationDistance: 12
+    // NOTE: pas de depthWrite:false — ça casse le tri de profondeur des meshes
+    // à transmission dans Three.js et fait passer le socle devant la carte.
   });
 }
 let acrylic = acrylicMat();
@@ -369,6 +422,7 @@ const cardGroup = new THREE.Group();
 
   cardGroup.add(edge, front, back);
 }
+cardGroup.renderOrder = 0;   // opaque : dessiné en premier
 scene.add(cardGroup);
 
 /* ══════════ GÉOMÉTRIE : PIED ACRYLIQUE (reconstruit à la volée) ══════════ */
@@ -398,55 +452,70 @@ function bladeGeometry(w, h, t, tilt){
 
 function buildStand(){
   clearGroup(standGroup);
-  const bR = P.baseR * CARD_W;
-  const baseT = 0.045;
-  const baseY = -CARD_H/2 - baseT/2;
 
-  // socle : disque fin, légèrement conique
+  const bR    = P.baseR * CARD_W;      // rayon socle
+  const baseT = CARD_W * 0.030;        // épaisseur socle : fine
+  const cardBottom = -CARD_H/2;
+  const baseTop = cardBottom;          // la carte repose SUR le socle
+  const baseY = baseTop - baseT/2;
+
+  // socle : plaque plate, décalée vers l'avant (le poids est devant la carte)
   const base = new THREE.Mesh(
-    new THREE.CylinderGeometry(bR, bR*1.02, baseT, 96, 1),
+    new THREE.CylinderGeometry(bR, bR*0.99, baseT, 80, 1),
     acrylic
   );
-  base.position.y = baseY;
+  base.position.set(0, baseY, bR*0.30);   // décalé en +z = vers la caméra
   base.castShadow = true; base.receiveShadow = true;
+  base.renderOrder = 2;
   standGroup.add(base);
 
-  // deux lames devant la carte, très fines et transparentes
-  const lh = P.legH * CARD_H;
-  const lw = P.legW * CARD_W;
-  const lt = P.legT * CARD_W;
+  const lh   = P.legH * CARD_H;
+  const lw   = P.legW * CARD_W;
+  const lt   = P.legT * CARD_W;
   const tilt = P.legTilt * Math.PI/180;
 
   [-1, 1].forEach(s => {
-    const blade = new THREE.Mesh(bladeGeometry(lw, lh, lt, tilt), acrylic);
-    blade.position.set(
-      s * P.legSpread * CARD_W,
-      -CARD_H/2,
-      CARD_T/2 + 0.004
-    );
-    blade.rotation.x = -tilt;
-    blade.castShadow = true;
-    standGroup.add(blade);
+    const x = s * P.legSpread * CARD_W;
 
-    // pied horizontal qui rejoint le socle
-    const footL = P.baseR*CARD_W*0.62;
-    const foot = new THREE.Mesh(
-      new THREE.BoxGeometry(lw, lt*1.2, footL),
+    // Lame verticale : part du socle et remonte DEVANT la carte,
+    // très fine, elle la retient. C'est ce qu'on voit sur les vraies photos.
+    const blade = new THREE.Mesh(
+      new THREE.BoxGeometry(lw, lh, lt),
       acrylic
     );
-    foot.position.set(s * P.legSpread * CARD_W, -CARD_H/2 + lt*0.6, footL/2 - CARD_T);
+    // pivot au pied de la lame
+    blade.geometry.translate(0, lh/2, 0);
+    blade.position.set(x, baseTop, CARD_T/2 + lt/2 + 0.002);
+    blade.rotation.x = -tilt;   // s'écarte légèrement en montant
+    blade.castShadow = true;
+    blade.renderOrder = 3;
+    standGroup.add(blade);
+
+    // pied qui relie la lame au socle, posé à plat
+    const footLen = bR * 0.55;
+    const foot = new THREE.Mesh(
+      new THREE.BoxGeometry(lw, lt, footLen),
+      acrylic
+    );
+    foot.position.set(x, baseTop + lt/2, CARD_T/2 + footLen/2);
     foot.castShadow = true;
+    foot.renderOrder = 2;
     standGroup.add(foot);
   });
 
-  // butée arrière : la carte s'y appuie
-  const stop = new THREE.Mesh(
-    new THREE.BoxGeometry(bR*1.2, CARD_H*0.06, lt*1.1),
-    acrylic
-  );
-  stop.position.set(0, -CARD_H/2 + CARD_H*0.03, -CARD_T/2 - lt*0.6);
-  stop.castShadow = true;
-  standGroup.add(stop);
+  // Butée arrière : deux petits ergots contre lesquels la carte s'appuie
+  [-1, 1].forEach(s => {
+    const x = s * P.legSpread * CARD_W;
+    const stopH = CARD_H * 0.05;
+    const stop = new THREE.Mesh(
+      new THREE.BoxGeometry(lw*1.4, stopH, lt),
+      acrylic
+    );
+    stop.position.set(x, baseTop + stopH/2, -CARD_T/2 - lt/2 - 0.002);
+    stop.castShadow = true;
+    stop.renderOrder = 1;   // derrière la carte
+    standGroup.add(stop);
+  });
 }
 
 /* ══════════ GÉOMÉTRIE : BOÎTIER (reconstruit à la volée) ══════════ */
@@ -637,7 +706,7 @@ function updateCamera(){
 }
 function resize(){
   const r = canvas.parentElement.getBoundingClientRect();
-  const s = Math.floor(Math.min(r.width, r.height));
+  const s = Math.max(200, Math.floor(Math.min(r.width, r.height || r.width)));
   renderer.setSize(s, s, false);
   composer.setSize(s, s);
   camera.aspect = 1;
@@ -748,6 +817,32 @@ window.setAngle = a=>{
   applyAll();
 };
 window.applyPreset = p=>{ Object.assign(P, PRESETS[p]); applyAll(); };
+
+/* Recharge les curseurs depuis P (après un changement de look) */
+const SLIDER_MAP = {
+  sTr:['transmission',.01,f2], sTh:['thickness',.01,f2], sIor:['ior',.01,f2],
+  sRo:['roughness',.01,f2],    sCc:['clearcoat',.01,f2],
+  sK:['keyI',.1,f1], sF:['fillI',.1,f1], sR:['rimI',.1,f1],
+  sA:['ambI',.01,f2], sE:['exposure',.01,f2],
+  sHl:['holo',.01,f2], sSt:['sat',.01,f2],
+  sRf:['refl',.01,f2], sVg:['vig',.01,f2]
+};
+function syncSliders(){
+  for(const [sid,[key,scale,fmt]] of Object.entries(SLIDER_MAP)){
+    const el = document.getElementById(sid);
+    const out = document.getElementById(sid.replace('s','v',1));
+    if(!el) continue;
+    el.value = Math.round(P[key]/scale);
+    out.textContent = fmt(P[key]);
+  }
+}
+window.setLook = i=>{
+  Object.assign(P, LOOKS[i].p);
+  document.querySelectorAll('.look').forEach(b=>b.classList.toggle('on', +b.dataset.look===i));
+  document.getElementById('lookHint').textContent = LOOKS[i].hint;
+  syncSliders();
+  applyAll();
+};
 window.resetAll = ()=> location.reload();
 window.snap = ()=>{
   composer.render();
@@ -891,9 +986,11 @@ function loop(now){
   requestAnimationFrame(loop);
 }
 
+setLook(0);        // le look A définit les valeurs de départ
 resize();
 applyAll();
-buildEnvNow();   // premier environnement, synchrone
+buildEnvNow();
+requestAnimationFrame(()=>resize());   // relance après stabilisation du layout   // premier environnement, synchrone
 document.getElementById('loading').style.display = 'none';
 requestAnimationFrame(loop);
 </script>

@@ -524,23 +524,77 @@ var THEMES=[
 function rr(c,x,y,w,h,r){c.beginPath();c.moveTo(x+r,y);c.lineTo(x+w-r,y);c.quadraticCurveTo(x+w,y,x+w,y+r);c.lineTo(x+w,y+h-r);c.quadraticCurveTo(x+w,y+h,x+w-r,y+h);c.lineTo(x+r,y+h);c.quadraticCurveTo(x,y+h,x,y+h-r);c.lineTo(x,y+r);c.quadraticCurveTo(x,y,x+r,y);c.closePath();}
 function val(id){var e=document.getElementById(id);return e?e.value.trim():'';}
 
+/* ═════════ CAMÉRA VIRTUELLE — projection perspective ═════════ */
+function makeCam(W,H,focal,dist,pitchDeg,camY){
+  var pitch=(pitchDeg||0)*Math.PI/180;
+  return {
+    W:W,H:H,f:focal,d:dist,pitch:pitch,camY:camY||0,
+    proj:function(x,y,z){
+      var yy=y-this.camY, zz=z+this.d;
+      var c=Math.cos(this.pitch), s=Math.sin(this.pitch);
+      var y2=yy*c-zz*s, z2=yy*s+zz*c;
+      if(z2<1) z2=1;
+      var k=this.f/z2;
+      return {x:this.W/2+x*k, y:this.H/2+y2*k, k:k, zc:z2};
+    }
+  };
+}
+function rotY(p,ang){
+  var c=Math.cos(ang), s=Math.sin(ang);
+  return {x:p.x*c+p.z*s, y:p.y, z:-p.x*s+p.z*c};
+}
+/* Déforme une image sur un quadrilatère par bandes verticales (homographie approchée) */
+function drawPerspective(ctx,img,q,slices){
+  var N=slices||110, TL=q[0], TR=q[1], BR=q[2], BL=q[3];
+  var iw=img.naturalWidth||img.width, ih=img.naturalHeight||img.height;
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(TL.x,TL.y); ctx.lineTo(TR.x,TR.y); ctx.lineTo(BR.x,BR.y); ctx.lineTo(BL.x,BL.y);
+  ctx.closePath(); ctx.clip();
+  for(var i=0;i<N;i++){
+    var t0=i/N, t1=(i+1)/N;
+    var w0=1/((1-t0)/TL.w+t0/TR.w), w1=1/((1-t1)/TL.w+t1/TR.w);
+    var u0=(t0/TR.w)*w0, u1=(t1/TR.w)*w1;
+    var xt0=TL.x+(TR.x-TL.x)*t0, yt0=TL.y+(TR.y-TL.y)*t0;
+    var yb0=BL.y+(BR.y-BL.y)*t0;
+    var xt1=TL.x+(TR.x-TL.x)*t1;
+    var sx0=u0*iw, sx1=u1*iw;
+    var sw=Math.max(0.5,sx1-sx0);
+    var dw=Math.max(0.6,xt1-xt0)+0.7;
+    var dh=yb0-yt0;
+    if(dh>0) ctx.drawImage(img,sx0,0,sw,ih,xt0,yt0,dw,dh);
+  }
+  ctx.restore();
+}
+function cardCorners(cam,wCard,hCard,ang,liftY){
+  var hw=wCard/2;
+  var pts=[{x:-hw,y:-hCard,z:0},{x:hw,y:-hCard,z:0},{x:hw,y:0,z:0},{x:-hw,y:0,z:0}];
+  return pts.map(function(p){
+    var r=rotY(p,ang);
+    var s=cam.proj(r.x,r.y+liftY,r.z);
+    s.w=1/s.zc;
+    return s;
+  });
+}
+
+/* ═════════ FOND STUDIO ═════════ */
 function drawBg(ctx,W,H,t,sa){
   var DS=8, lw=Math.ceil(W/DS), lh=Math.ceil(H/DS);
   var low=document.createElement('canvas'); low.width=lw; low.height=lh;
   var lc=low.getContext('2d');
-  var hz=lh*.62;
+  var hz=lh*.63;
   var wall=lc.createLinearGradient(0,0,0,hz*1.2);
-  wall.addColorStop(0,t.wt); wall.addColorStop(.62,t.wm); wall.addColorStop(1,t.horizon);
+  wall.addColorStop(0,t.wt); wall.addColorStop(.6,t.wm); wall.addColorStop(1,t.horizon);
   lc.fillStyle=wall; lc.fillRect(0,0,lw,hz+1);
   var fg=lc.createLinearGradient(0,hz,0,lh);
-  fg.addColorStop(0,t.horizon); fg.addColorStop(.2,t.wt); fg.addColorStop(1,t.fl);
+  fg.addColorStop(0,t.horizon); fg.addColorStop(.18,t.wt); fg.addColorStop(1,t.fl);
   lc.fillStyle=fg; lc.fillRect(0,hz,lw,lh-hz);
-  var sp=lc.createRadialGradient(lw/2,lh*.32,0,lw/2,lh*.32,lw*.5);
-  sp.addColorStop(0,'rgba('+t.spot+','+(sa*.20)+')'); sp.addColorStop(1,'rgba('+t.spot+',0)');
+  var sp=lc.createRadialGradient(lw/2,lh*.3,0,lw/2,lh*.3,lw*.48);
+  sp.addColorStop(0,'rgba('+t.spot+','+(sa*.18)+')'); sp.addColorStop(1,'rgba('+t.spot+',0)');
   lc.fillStyle=sp; lc.fillRect(0,0,lw,lh);
   ctx.imageSmoothingEnabled=true;
   ctx.drawImage(low,0,0,W,H);
-  ctx.fillStyle='rgba(0,0,0,0.2)'; ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='rgba(0,0,0,0.22)'; ctx.fillRect(0,0,W,H);
   var i;
   if(t.fx==='stars') for(i=0;i<24;i++){ctx.fillStyle='rgba(220,228,255,'+(.1+Math.random()*.26)+')';ctx.beginPath();ctx.arc(W*Math.random(),H*.5*Math.random(),Math.random()*1.1+.3,0,7);ctx.fill();}
   if(t.fx==='embers') for(i=0;i<9;i++){ctx.fillStyle='rgba(255,170,80,'+(.08+Math.random()*.18)+')';ctx.beginPath();ctx.arc(W*Math.random(),H*(.12+Math.random()*.42),Math.random()*1.3+.4,0,7);ctx.fill();}
@@ -548,112 +602,209 @@ function drawBg(ctx,W,H,t,sa){
   var g=ctx.getImageData(0,0,W,H),d=g.data;
   for(var k=0;k<d.length;k+=4){var n=(Math.random()-.5)*6; d[k]+=n; d[k+1]+=n; d[k+2]+=n;}
   ctx.putImageData(g,0,0);
-  var vg=ctx.createRadialGradient(W/2,H*.44,W*.2,W/2,H*.5,W*.72);
-  vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,0.6)');
+  var vg=ctx.createRadialGradient(W/2,H*.44,W*.18,W/2,H*.5,W*.72);
+  vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,0.62)');
   ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
 }
 
-function drawStand(ctx,cx,baseY,cardW,cardH,ang){
-  var legW=cardW*.048, legH=cardH*.30, spread=cardW*.22, skew=Math.sin(ang)*.5;
-  var bw=cardW*.82, bh=cardW*.09;
+/* ═════════ SOCLE ACRYLIQUE (projeté) ═════════ */
+function projEllipse(cam,cx,cz,rx,rz,y,n){
+  var pts=[];
+  for(var i=0;i<n;i++){ var a=i/n*Math.PI*2; pts.push(cam.proj(cx+Math.cos(a)*rx,y,cz+Math.sin(a)*rz)); }
+  return pts;
+}
+function pathPts(ctx,pts){
+  ctx.beginPath(); ctx.moveTo(pts[0].x,pts[0].y);
+  for(var i=1;i<pts.length;i++) ctx.lineTo(pts[i].x,pts[i].y);
+  ctx.closePath();
+}
+function drawStandBase(ctx,cam,wCard,liftY){
+  var rx=wCard*0.46, rz=wCard*0.30, thick=wCard*0.028;
+  var top=projEllipse(cam,0,0,rx,rz,liftY,48);
+  var bot=projEllipse(cam,0,0,rx,rz,liftY+thick,48);
   ctx.save();
-  var bs=ctx.createRadialGradient(cx,baseY+bh*.4,0,cx,baseY+bh*.4,bw*.7);
-  bs.addColorStop(0,'rgba(0,0,0,0.65)'); bs.addColorStop(1,'rgba(0,0,0,0)');
-  ctx.fillStyle=bs; ctx.beginPath(); ctx.ellipse(cx,baseY+bh*.5,bw*.72,bh*1.4,0,0,7); ctx.fill();
-  ctx.fillStyle='rgba(215,228,245,0.16)';
-  ctx.beginPath(); ctx.ellipse(cx,baseY,bw/2,bh/2,0,0,7); ctx.fill();
-  ctx.strokeStyle='rgba(235,245,255,0.42)'; ctx.lineWidth=1.6;
-  ctx.beginPath(); ctx.ellipse(cx,baseY,bw/2,bh/2,0,0,7); ctx.stroke();
-  ctx.fillStyle='rgba(190,205,225,0.13)'; ctx.fillRect(cx-bw/2,baseY,bw,bh*.32);
-  ctx.strokeStyle='rgba(235,245,255,0.28)'; ctx.lineWidth=1;
-  ctx.beginPath(); ctx.moveTo(cx-bw/2,baseY+bh*.32); ctx.lineTo(cx+bw/2,baseY+bh*.32); ctx.stroke();
+  var lowest=-Infinity, i;
+  for(i=0;i<bot.length;i++) if(bot[i].y>lowest) lowest=bot[i].y;
+  var cxs=cam.proj(0,liftY+thick,0);
+  var half=Math.abs(top[0].x-top[24].x)*0.5;
+  var sh=ctx.createRadialGradient(cxs.x,lowest-4,0,cxs.x,lowest-4,half*1.7);
+  sh.addColorStop(0,'rgba(0,0,0,0.72)'); sh.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=sh;
+  ctx.beginPath(); ctx.ellipse(cxs.x,lowest-5,half*1.75,thick*3.6,0,0,7); ctx.fill();
   ctx.restore();
+  ctx.beginPath();
+  ctx.moveTo(top[0].x,top[0].y);
+  for(i=1;i<top.length;i++) ctx.lineTo(top[i].x,top[i].y);
+  for(var j=bot.length-1;j>=0;j--) ctx.lineTo(bot[j].x,bot[j].y);
+  ctx.closePath();
+  ctx.fillStyle='rgba(200,215,235,0.14)'; ctx.fill();
+  pathPts(ctx,top);
+  ctx.fillStyle='rgba(215,228,245,0.13)'; ctx.fill();
+  ctx.strokeStyle='rgba(240,250,255,0.4)'; ctx.lineWidth=1.6; ctx.stroke();
+  pathPts(ctx,bot);
+  ctx.strokeStyle='rgba(240,250,255,0.22)'; ctx.lineWidth=1; ctx.stroke();
+}
+function drawStandLegs(ctx,cam,wCard,hCard,ang,liftY){
+  var legH=hCard*0.30, legW=wCard*0.045, thick=wCard*0.02, spread=wCard*0.24;
   [-1,1].forEach(function(s){
-    var bx=cx+s*spread+skew*legH*.3, tx=cx+s*spread*.82;
-    ctx.save();
+    var base=rotY({x:s*spread*0.92,y:0,z:-wCard*0.13},ang*0.5);
+    var apexL=rotY({x:s*spread-legW*0.35,y:-legH,z:0},ang);
+    var apexR=rotY({x:s*spread+legW*0.35,y:-legH,z:0},ang);
+    var b0=cam.proj(base.x-legW/2,liftY,base.z);
+    var b1=cam.proj(base.x+legW/2,liftY,base.z);
+    var a0=cam.proj(apexL.x,apexL.y+liftY,apexL.z);
+    var a1=cam.proj(apexR.x,apexR.y+liftY,apexR.z);
+    var bz0=cam.proj(base.x-legW/2,liftY,base.z+thick);
+    var az0=cam.proj(apexL.x,apexL.y+liftY,apexL.z+thick);
     ctx.beginPath();
-    ctx.moveTo(bx-legW/2,baseY);
-    ctx.lineTo(tx-legW*.35,baseY-legH);
-    ctx.lineTo(tx+legW*.35,baseY-legH);
-    ctx.lineTo(bx+legW/2,baseY);
+    ctx.moveTo(b0.x,b0.y); ctx.lineTo(a0.x,a0.y); ctx.lineTo(az0.x,az0.y); ctx.lineTo(bz0.x,bz0.y);
     ctx.closePath();
-    var lg=ctx.createLinearGradient(bx-legW/2,0,bx+legW/2,0);
-    lg.addColorStop(0,'rgba(235,245,255,0.42)');
-    lg.addColorStop(.35,'rgba(180,200,225,0.14)');
-    lg.addColorStop(.7,'rgba(235,245,255,0.30)');
-    lg.addColorStop(1,'rgba(150,170,200,0.10)');
+    ctx.fillStyle='rgba(190,208,230,0.20)'; ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(b0.x,b0.y); ctx.lineTo(a0.x,a0.y); ctx.lineTo(a1.x,a1.y); ctx.lineTo(b1.x,b1.y);
+    ctx.closePath();
+    var lg=ctx.createLinearGradient(b0.x,0,b1.x,0);
+    lg.addColorStop(0,'rgba(240,248,255,0.46)');
+    lg.addColorStop(.3,'rgba(175,195,220,0.13)');
+    lg.addColorStop(.72,'rgba(235,245,255,0.32)');
+    lg.addColorStop(1,'rgba(150,172,200,0.10)');
     ctx.fillStyle=lg; ctx.fill();
-    ctx.strokeStyle='rgba(240,250,255,0.45)'; ctx.lineWidth=1.1; ctx.stroke();
-    ctx.restore();
+    ctx.strokeStyle='rgba(250,253,255,0.62)'; ctx.lineWidth=1.2;
+    ctx.beginPath(); ctx.moveTo(b0.x,b0.y); ctx.lineTo(a0.x,a0.y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(b1.x,b1.y); ctx.lineTo(a1.x,a1.y); ctx.stroke();
+    ctx.strokeStyle='rgba(250,253,255,0.30)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(a0.x,a0.y); ctx.lineTo(a1.x,a1.y); ctx.stroke();
   });
 }
 
-function drawCase(ctx,dx,dy,dw,dh){
-  var m=dw*.10, x=dx-m, y=dy-m, w=dw+m*2, h=dh+m*2;
-  ctx.save();
-  ctx.fillStyle='rgba(220,232,248,0.09)'; rr(ctx,x,y,w,h,m*.5); ctx.fill();
-  ctx.strokeStyle='rgba(240,250,255,0.5)'; ctx.lineWidth=2; rr(ctx,x,y,w,h,m*.5); ctx.stroke();
-  ctx.strokeStyle='rgba(240,250,255,0.22)'; ctx.lineWidth=1;
-  rr(ctx,x+m*.32,y+m*.32,w-m*.64,h-m*.64,m*.3); ctx.stroke();
-  ctx.beginPath(); rr(ctx,x,y,w,h,m*.5); ctx.clip();
-  var gl=ctx.createLinearGradient(x,y,x+w*.7,y+h);
-  gl.addColorStop(0,'rgba(255,255,255,0.13)');
-  gl.addColorStop(.35,'rgba(255,255,255,0.02)');
-  gl.addColorStop(.55,'rgba(255,255,255,0.09)');
-  gl.addColorStop(1,'rgba(255,255,255,0)');
-  ctx.fillStyle=gl; ctx.fillRect(x,y,w,h);
-  ctx.restore();
-  [[x+m*.5,y+m*.5],[x+w-m*.5,y+m*.5],[x+m*.5,y+h-m*.5],[x+w-m*.5,y+h-m*.5]].forEach(function(p){
-    var r=m*.28;
-    var sg=ctx.createRadialGradient(p[0]-r*.3,p[1]-r*.3,0,p[0],p[1],r);
-    sg.addColorStop(0,'rgba(255,255,255,0.75)'); sg.addColorStop(.6,'rgba(210,225,245,0.3)'); sg.addColorStop(1,'rgba(160,180,210,0.15)');
-    ctx.fillStyle=sg; ctx.beginPath(); ctx.arc(p[0],p[1],r,0,7); ctx.fill();
-    ctx.strokeStyle='rgba(255,255,255,0.4)'; ctx.lineWidth=.8; ctx.stroke();
+/* ═════════ BOÎTIER (projeté sur le quad) ═════════ */
+function expandQuad(q,m){
+  var cx=(q[0].x+q[1].x+q[2].x+q[3].x)/4, cy=(q[0].y+q[1].y+q[2].y+q[3].y)/4;
+  return q.map(function(p){
+    var dx=p.x-cx, dy=p.y-cy, len=Math.hypot(dx,dy)||1;
+    return {x:p.x+dx/len*m, y:p.y+dy/len*m};
   });
+}
+function drawCase(ctx,corners,wCard){
+  var m=wCard*0.075;
+  var q=expandQuad(corners,m*0.9);
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(q[0].x,q[0].y); ctx.lineTo(q[1].x,q[1].y); ctx.lineTo(q[2].x,q[2].y); ctx.lineTo(q[3].x,q[3].y);
+  ctx.closePath();
+  ctx.fillStyle='rgba(220,232,248,0.085)'; ctx.fill();
+  ctx.strokeStyle='rgba(242,250,255,0.55)'; ctx.lineWidth=2.2; ctx.stroke();
+  var qi=expandQuad(corners,m*0.42);
+  ctx.beginPath();
+  ctx.moveTo(qi[0].x,qi[0].y); ctx.lineTo(qi[1].x,qi[1].y); ctx.lineTo(qi[2].x,qi[2].y); ctx.lineTo(qi[3].x,qi[3].y);
+  ctx.closePath();
+  ctx.strokeStyle='rgba(242,250,255,0.24)'; ctx.lineWidth=1; ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(q[0].x,q[0].y); ctx.lineTo(q[1].x,q[1].y); ctx.lineTo(q[2].x,q[2].y); ctx.lineTo(q[3].x,q[3].y);
+  ctx.closePath(); ctx.clip();
+  var minX=Math.min(q[0].x,q[3].x), minY=Math.min(q[0].y,q[1].y);
+  var maxX=Math.max(q[1].x,q[2].x), maxY=Math.max(q[2].y,q[3].y);
+  var gl=ctx.createLinearGradient(minX,minY,minX+(maxX-minX)*.75,maxY);
+  gl.addColorStop(0,'rgba(255,255,255,0.14)');
+  gl.addColorStop(.32,'rgba(255,255,255,0.015)');
+  gl.addColorStop(.52,'rgba(255,255,255,0.10)');
+  gl.addColorStop(.72,'rgba(255,255,255,0.01)');
+  gl.addColorStop(1,'rgba(255,255,255,0)');
+  ctx.fillStyle=gl; ctx.fillRect(minX,minY,maxX-minX,maxY-minY);
+  ctx.restore();
+  var ccx=(q[0].x+q[1].x+q[2].x+q[3].x)/4, ccy=(q[0].y+q[1].y+q[2].y+q[3].y)/4;
+  q.forEach(function(p){
+    var px=p.x+(ccx-p.x)*0.075, py=p.y+(ccy-p.y)*0.075, r=m*0.30;
+    var sg=ctx.createRadialGradient(px-r*.3,py-r*.3,0,px,py,r);
+    sg.addColorStop(0,'rgba(255,255,255,0.85)');
+    sg.addColorStop(.55,'rgba(205,222,242,0.32)');
+    sg.addColorStop(1,'rgba(150,172,205,0.14)');
+    ctx.fillStyle=sg; ctx.beginPath(); ctx.arc(px,py,r,0,7); ctx.fill();
+    ctx.strokeStyle='rgba(255,255,255,0.45)'; ctx.lineWidth=.9; ctx.stroke();
+  });
+}
+
+/* ═════════ OMBRE + REFLET ═════════ */
+function drawGroundShadow(ctx,corners){
+  var BL=corners[3], BR=corners[2];
+  var cxm=(BL.x+BR.x)/2, cym=(BL.y+BR.y)/2, w=Math.abs(BR.x-BL.x);
+  ctx.save();
+  var sh=ctx.createRadialGradient(cxm,cym,0,cxm,cym,w*0.72);
+  sh.addColorStop(0,'rgba(0,0,0,0.8)'); sh.addColorStop(.55,'rgba(0,0,0,0.3)'); sh.addColorStop(1,'rgba(0,0,0,0)');
+  ctx.fillStyle=sh;
+  ctx.beginPath(); ctx.ellipse(cxm,cym+3,w*0.68,w*0.075,0,0,7); ctx.fill();
+  ctx.restore();
+}
+function drawReflection(ctx,cam,img,wCard,hCard,ang,liftY,strength){
+  if(strength<=0) return;
+  var hw=wCard/2;
+  var pts=[{x:-hw,y:0,z:0},{x:hw,y:0,z:0},{x:hw,y:hCard*0.55,z:0},{x:-hw,y:hCard*0.55,z:0}];
+  var sc=pts.map(function(p){
+    var r=rotY(p,ang);
+    var s=cam.proj(r.x,r.y+liftY,r.z);
+    s.w=1/s.zc;
+    return s;
+  });
+  var iw=img.naturalWidth||img.width, ih=img.naturalHeight||img.height;
+  var mir=document.createElement('canvas'); mir.width=iw; mir.height=ih;
+  var mc=mir.getContext('2d');
+  mc.save(); mc.scale(1,-1); mc.drawImage(img,0,-ih); mc.restore();
+  var off=document.createElement('canvas'); off.width=ctx.canvas.width; off.height=ctx.canvas.height;
+  var oc=off.getContext('2d');
+  drawPerspective(oc,mir,sc,70);
+  var top=Math.min(sc[0].y,sc[1].y), bot=Math.max(sc[2].y,sc[3].y);
+  var mask=oc.createLinearGradient(0,top,0,bot);
+  mask.addColorStop(0,'rgba(0,0,0,'+(0.5*strength)+')');
+  mask.addColorStop(1,'rgba(0,0,0,0)');
+  oc.globalCompositeOperation='destination-in';
+  oc.fillStyle=mask; oc.fillRect(0,0,off.width,off.height);
+  ctx.drawImage(off,0,0);
 }
 
 function drawLogoBadge(ctx,W,H){
   var txt=val('logoText')||'cardshot';
-  ctx.font='600 15px -apple-system,sans-serif';
+  var s=W/1000;
+  ctx.font='600 '+(15*s)+'px -apple-system,sans-serif';
   var tw=ctx.measureText(txt).width;
-  var bw=tw+58, bh=40, x=W-bw-24, y=H-bh-22;
+  var bw=tw+58*s, bh=40*s, x=W-bw-24*s, y=H-bh-22*s;
   ctx.save();
-  ctx.fillStyle='rgba(8,6,16,0.6)'; rr(ctx,x,y,bw,bh,20); ctx.fill();
-  ctx.strokeStyle='rgba(255,255,255,0.14)'; ctx.lineWidth=1; rr(ctx,x,y,bw,bh,20); ctx.stroke();
+  ctx.fillStyle='rgba(8,6,16,0.6)'; rr(ctx,x,y,bw,bh,20*s); ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,0.14)'; ctx.lineWidth=1; rr(ctx,x,y,bw,bh,20*s); ctx.stroke();
   if(S.logo){
-    ctx.save(); rr(ctx,x+8,y+8,24,24,7); ctx.clip();
-    ctx.drawImage(S.logo,x+8,y+8,24,24); ctx.restore();
+    ctx.save(); rr(ctx,x+8*s,y+8*s,24*s,24*s,7*s); ctx.clip();
+    ctx.drawImage(S.logo,x+8*s,y+8*s,24*s,24*s); ctx.restore();
   } else {
-    ctx.fillStyle='#8b7cf8'; rr(ctx,x+8,y+8,24,24,7); ctx.fill();
-    ctx.fillStyle='#fff'; ctx.font='700 11px -apple-system,sans-serif'; ctx.textAlign='center';
-    ctx.fillText('CS',x+20,y+24); ctx.textAlign='left';
+    ctx.fillStyle='#8b7cf8'; rr(ctx,x+8*s,y+8*s,24*s,24*s,7*s); ctx.fill();
+    ctx.fillStyle='#fff'; ctx.font='700 '+(11*s)+'px -apple-system,sans-serif'; ctx.textAlign='center';
+    ctx.fillText('CS',x+20*s,y+24*s); ctx.textAlign='left';
   }
-  ctx.font='600 15px -apple-system,sans-serif'; ctx.fillStyle='rgba(255,255,255,0.88)';
-  ctx.fillText(txt,x+40,y+25);
+  ctx.font='600 '+(15*s)+'px -apple-system,sans-serif'; ctx.fillStyle='rgba(255,255,255,0.88)';
+  ctx.fillText(txt,x+40*s,y+25*s);
   ctx.restore();
 }
-
 function drawInfoTag(ctx,W,H){
   var name=val('fName'), num=val('fNum'), price=val('fPrice'), rar=val('fRarity');
   if(!(name||num||price||rar)) return;
+  var s=W/1000;
   var l1=name||'Ma carte', l2=[num,rar].filter(Boolean).join('  ·  ');
-  ctx.font='600 22px -apple-system,sans-serif'; var w1=ctx.measureText(l1).width;
-  ctx.font='14px -apple-system,sans-serif'; var w2=l2?ctx.measureText(l2).width:0;
-  var tw=Math.max(w1,w2)+40, th=l2?78:58, tx=26, ty=H-th-24;
-  ctx.fillStyle='rgba(7,5,22,0.85)'; rr(ctx,tx,ty,tw,th,13); ctx.fill();
-  ctx.fillStyle='#fff'; ctx.font='600 22px -apple-system,sans-serif';
-  ctx.fillText(l1,tx+18,l2?ty+35:ty+37);
-  if(l2){ ctx.font='14px -apple-system,sans-serif'; ctx.fillStyle='rgba(255,255,255,0.55)'; ctx.fillText(l2,tx+18,ty+61); }
+  ctx.font='600 '+(22*s)+'px -apple-system,sans-serif'; var w1=ctx.measureText(l1).width;
+  ctx.font=(14*s)+'px -apple-system,sans-serif'; var w2=l2?ctx.measureText(l2).width:0;
+  var tw=Math.max(w1,w2)+40*s, th=(l2?78:58)*s, tx=26*s, ty=H-th-24*s;
+  ctx.fillStyle='rgba(7,5,22,0.85)'; rr(ctx,tx,ty,tw,th,13*s); ctx.fill();
+  ctx.fillStyle='#fff'; ctx.font='600 '+(22*s)+'px -apple-system,sans-serif';
+  ctx.fillText(l1,tx+18*s,ty+(l2?35:37)*s);
+  if(l2){ ctx.font=(14*s)+'px -apple-system,sans-serif'; ctx.fillStyle='rgba(255,255,255,0.55)'; ctx.fillText(l2,tx+18*s,ty+61*s); }
   if(price){
-    ctx.font='700 26px -apple-system,sans-serif';
-    var pw=ctx.measureText(price).width+44;
-    ctx.fillStyle='rgba(255,196,77,0.96)'; rr(ctx,tx+tw+10,ty,pw,th,13); ctx.fill();
+    ctx.font='700 '+(26*s)+'px -apple-system,sans-serif';
+    var pw=ctx.measureText(price).width+44*s;
+    ctx.fillStyle='rgba(255,196,77,0.96)'; rr(ctx,tx+tw+10*s,ty,pw,th,13*s); ctx.fill();
     ctx.fillStyle='#1c0d00'; ctx.textAlign='center';
-    ctx.fillText(price,tx+tw+10+pw/2,ty+th/2+9); ctx.textAlign='left';
+    ctx.fillText(price,tx+tw+10*s+pw/2,ty+th/2+9*s); ctx.textAlign='left';
   }
 }
 
-function renderShot(canvas, shot, size){
+/* ═════════ RENDU D'UN VISUEL ═════════ */
+function renderShot(canvas,shot,size){
   var W=size||1000, H=W;
   canvas.width=W; canvas.height=H;
   var ctx=canvas.getContext('2d');
@@ -664,48 +815,53 @@ function renderShot(canvas, shot, size){
   if(!img) return;
 
   var iw=img.naturalWidth||img.width, ih=img.naturalHeight||img.height;
-  var maxH = mount==='case' ? H*.54 : H*.60;
-  var sc=maxH/ih;
-  if(iw*sc > W*.56) sc=(W*.56)/iw;
-  var dw=iw*sc, dh=ih*sc;
-  var cx=W/2, baseY=H*.80;
-  var dx=cx-dw/2, dy=baseY-dh;
-  var ang=shot.angle*0.17;
+  var ratio=ih/iw;
+  var scale=W/1000;
+  var wCard=(mount==='case'?360:390)*scale;
+  var hCard=wCard*ratio;
+  // limite la hauteur si la carte est très allongée
+  if(hCard > H*0.62){ hCard=H*0.62; wCard=hCard/ratio; }
 
-  var rl=ctx.createRadialGradient(cx,dy+dh*.45,dw*.35,cx,dy+dh*.45,dw*.95);
-  rl.addColorStop(0,'rgba('+t.spot+','+(S.halo*.16)+')'); rl.addColorStop(1,'rgba('+t.spot+',0)');
-  ctx.fillStyle=rl; ctx.beginPath(); ctx.ellipse(cx,dy+dh*.45,dw*.8,dh*.75,0,0,7); ctx.fill();
+  var cam=makeCam(W,H,1500*scale,1450*scale,5,-hCard*0.42);
+  var liftY=hCard*0.42;
+  var ang=shot.angle*16*Math.PI/180;
+  var q=cardCorners(cam,wCard,hCard,ang,liftY);
 
-  var cs=ctx.createRadialGradient(cx,baseY,0,cx,baseY,dw*.7);
-  cs.addColorStop(0,'rgba(0,0,0,0.75)'); cs.addColorStop(1,'rgba(0,0,0,0)');
-  ctx.fillStyle=cs; ctx.beginPath(); ctx.ellipse(cx,baseY+4,dw*.68,dw*.075,0,0,7); ctx.fill();
+  var cx=(q[0].x+q[1].x+q[2].x+q[3].x)/4, cy=(q[0].y+q[1].y+q[2].y+q[3].y)/4;
+  var wpx=Math.abs(q[1].x-q[0].x);
+  var rl=ctx.createRadialGradient(cx,cy,wpx*0.4,cx,cy,wpx*1.15);
+  rl.addColorStop(0,'rgba('+t.spot+','+(S.halo*.18)+')'); rl.addColorStop(1,'rgba('+t.spot+',0)');
+  ctx.fillStyle=rl; ctx.beginPath(); ctx.ellipse(cx,cy,wpx*1.0,wpx*1.35,0,0,7); ctx.fill();
 
-  if(S.reflect>0){
-    var refH=Math.round(dh*.3);
-    var off=document.createElement('canvas'); off.width=Math.max(1,Math.round(dw)); off.height=refH;
-    var oc=off.getContext('2d');
-    oc.save(); oc.scale(1,-1); oc.drawImage(img,0,-dh,dw,dh); oc.restore();
-    var mask=oc.createLinearGradient(0,0,0,refH);
-    mask.addColorStop(0,'rgba(0,0,0,'+(.45*S.reflect)+')'); mask.addColorStop(1,'rgba(0,0,0,0)');
-    oc.globalCompositeOperation='destination-in'; oc.fillStyle=mask; oc.fillRect(0,0,off.width,refH);
-    ctx.drawImage(off,dx,baseY+2);
-  }
+  drawGroundShadow(ctx,q);
+  drawReflection(ctx,cam,img,wCard,hCard,ang,liftY,S.reflect);
+  drawStandBase(ctx,cam,mount==='case'?wCard*1.06:wCard,liftY);
 
   ctx.save();
-  ctx.translate(cx,baseY);
-  if(shot.angle!==0){
-    ctx.transform(Math.cos(ang),0,Math.sin(ang)*.42,1,0,0);
-    ctx.scale(1-Math.abs(shot.angle)*.06,1);
-  }
-  ctx.translate(-cx,-baseY);
-  ctx.shadowColor='rgba(0,0,0,0.7)'; ctx.shadowBlur=44; ctx.shadowOffsetY=16;
-  ctx.drawImage(img,dx,dy,dw,dh);
-  ctx.shadowColor='transparent';
-  if(mount==='case') drawCase(ctx,dx,dy,dw,dh);
+  ctx.shadowColor='rgba(0,0,0,0.72)'; ctx.shadowBlur=44*scale; ctx.shadowOffsetY=14*scale;
+  ctx.beginPath();
+  ctx.moveTo(q[0].x,q[0].y); ctx.lineTo(q[1].x,q[1].y); ctx.lineTo(q[2].x,q[2].y); ctx.lineTo(q[3].x,q[3].y);
+  ctx.closePath(); ctx.fillStyle='rgba(0,0,0,0.9)'; ctx.fill();
   ctx.restore();
 
-  if(mount==='stand') drawStand(ctx,cx,baseY,dw,dh,ang);
-  else drawStand(ctx,cx,baseY+dw*.13,dw*.9,dh*.4,ang);
+  drawPerspective(ctx,img,q,110);
+
+  if(shot.angle!==0){
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(q[0].x,q[0].y); ctx.lineTo(q[1].x,q[1].y); ctx.lineTo(q[2].x,q[2].y); ctx.lineTo(q[3].x,q[3].y);
+    ctx.closePath(); ctx.clip();
+    var x0=shot.angle>0?q[0].x:q[1].x, x1=shot.angle>0?q[1].x:q[0].x;
+    var sg=ctx.createLinearGradient(x0,0,x1,0);
+    sg.addColorStop(0,'rgba(0,0,0,0.30)');
+    sg.addColorStop(0.55,'rgba(0,0,0,0.04)');
+    sg.addColorStop(1,'rgba(255,255,255,0.05)');
+    ctx.fillStyle=sg; ctx.fillRect(0,0,W,H);
+    ctx.restore();
+  }
+
+  if(mount==='case') drawCase(ctx,q,wCard);
+  drawStandLegs(ctx,cam,mount==='case'?wCard*0.92:wCard,mount==='case'?hCard*0.5:hCard,ang,liftY);
 
   drawInfoTag(ctx,W,H);
   drawLogoBadge(ctx,W,H);

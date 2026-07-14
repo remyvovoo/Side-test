@@ -31,6 +31,8 @@ export interface CardInfo {
   number: string;
   price: string;
   rarity: string;
+  series: string;
+  language: string;
 }
 
 /**

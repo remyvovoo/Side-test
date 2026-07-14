@@ -36,6 +36,13 @@ export const BACK: Record<ScreenName, ScreenName> = {
   export: "customize",
 };
 
-export const EMPTY_CARD_INFO: CardInfo = { name: "", number: "", price: "", rarity: "" };
+export const EMPTY_CARD_INFO: CardInfo = {
+  name: "",
+  number: "",
+  price: "",
+  rarity: "",
+  series: "",
+  language: "",
+};
 
 export type ExportFormat = "jpg" | "png";

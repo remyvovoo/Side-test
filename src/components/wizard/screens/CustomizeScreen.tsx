@@ -167,15 +167,15 @@ export function CustomizeScreen({
             ))}
           </div>
 
-          <div className={`collapse${openSection === "info" ? " open" : ""}`}>
-            <div className="collapse-head" onClick={() => setOpenSection(openSection === "info" ? null : "info")}>
+          <div className={`cs-collapse${openSection === "info" ? " open" : ""}`}>
+            <div className="cs-collapse-head" onClick={() => setOpenSection(openSection === "info" ? null : "info")}>
               <span>
                 <i className="ti ti-tag" style={{ fontSize: 14, marginRight: 6 }} />
                 Infos de ma carte
               </span>
               <i className="ti ti-chevron-down chev" />
             </div>
-            <div className="collapse-body">
+            <div className="cs-collapse-body">
               <div className="field-grid" style={{ marginBottom: 8 }}>
                 <input
                   type="text"
@@ -211,18 +211,32 @@ export function CustomizeScreen({
                   <option value="◆ Commune">◆ Commune</option>
                 </select>
               </div>
+              <div className="field-grid" style={{ marginTop: 8 }}>
+                <input
+                  type="text"
+                  placeholder="Série (ex : Évolutions Prismatiques)"
+                  value={cardInfo.series}
+                  onChange={(e) => onCardInfoChange({ ...cardInfo, series: e.target.value })}
+                />
+                <input
+                  type="text"
+                  placeholder="Langue (ex : Français)"
+                  value={cardInfo.language}
+                  onChange={(e) => onCardInfoChange({ ...cardInfo, language: e.target.value })}
+                />
+              </div>
             </div>
           </div>
 
-          <div className={`collapse${openSection === "logo" ? " open" : ""}`}>
-            <div className="collapse-head" onClick={() => setOpenSection(openSection === "logo" ? null : "logo")}>
+          <div className={`cs-collapse${openSection === "logo" ? " open" : ""}`}>
+            <div className="cs-collapse-head" onClick={() => setOpenSection(openSection === "logo" ? null : "logo")}>
               <span>
                 <i className="ti ti-photo-star" style={{ fontSize: 14, marginRight: 6 }} />
                 Mon logo
               </span>
               <i className="ti ti-chevron-down chev" />
             </div>
-            <div className="collapse-body">
+            <div className="cs-collapse-body">
               <div className="logo-row">
                 <div className="logo-preview">
                   {logoImage ? (
@@ -274,15 +288,15 @@ export function CustomizeScreen({
             </div>
           </div>
 
-          <div className={`collapse${openSection === "adv" ? " open" : ""}`}>
-            <div className="collapse-head" onClick={() => setOpenSection(openSection === "adv" ? null : "adv")}>
+          <div className={`cs-collapse${openSection === "adv" ? " open" : ""}`}>
+            <div className="cs-collapse-head" onClick={() => setOpenSection(openSection === "adv" ? null : "adv")}>
               <span>
                 <i className="ti ti-adjustments" style={{ fontSize: 14, marginRight: 6 }} />
                 Réglages avancés
               </span>
               <i className="ti ti-chevron-down chev" />
             </div>
-            <div className="collapse-body">
+            <div className="cs-collapse-body">
               <div className="slider-row">
                 <div className="slider-head">
                   <span>Reflet au sol</span>

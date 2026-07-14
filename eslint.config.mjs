@@ -14,6 +14,8 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Archived prototype, kept for reference only — not linted or built.
     "legacy-prototype/**",
+    // Third-party Claude Code skill scripts, not part of the app.
+    ".claude/**",
   ]),
 ]);
 

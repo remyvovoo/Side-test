@@ -1,0 +1,29 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+enum Role {
+  SELLER
+  ADMIN
+}
+
+enum Locale {
+  fr
+  en
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  role         Role     @default(SELLER)
+  locale       Locale   @default(fr)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}

@@ -1,5 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { LocaleProvider } from "@/components/i18n/LocaleProvider";
+import { AuthSessionProvider } from "@/components/auth/AuthSessionProvider";
+import { getLocaleServer } from "@/lib/i18n/get-locale-server";
 
 export const metadata: Metadata = {
   title: "Cardshot — Photos studio pour tes cartes",
@@ -12,20 +15,26 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const locale = await getLocaleServer();
+
   return (
-    <html lang="fr">
+    <html lang={locale}>
       <head>
         <link
           rel="stylesheet"
           href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css"
         />
       </head>
-      <body>{children}</body>
+      <body>
+        <AuthSessionProvider>
+          <LocaleProvider initialLocale={locale}>{children}</LocaleProvider>
+        </AuthSessionProvider>
+      </body>
     </html>
   );
 }

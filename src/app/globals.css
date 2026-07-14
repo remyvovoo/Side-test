@@ -41,6 +41,7 @@ body {
 .back-btn { width: 34px; height: 34px; border-radius: 9px; border: 0.5px solid var(--border-strong); background: var(--surface); color: var(--text-secondary); display: none; align-items: center; justify-content: center; cursor: pointer; font-size: 16px; }
 .back-btn.visible { display: flex; }
 .back-btn:hover { border-color: var(--accent); color: var(--text); }
+.topbar-link { text-decoration: none; white-space: nowrap; height: 34px; }
 
 .steps { display: none; align-items: center; margin: 4px 0 20px; }
 .steps.visible { display: flex; }

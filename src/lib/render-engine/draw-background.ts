@@ -63,7 +63,10 @@ export function drawBg(
   lc.restore();
 
   ctx.imageSmoothingEnabled = true;
+  // Légère profondeur de champ : le décor est un peu flou, comme derrière un objectif.
+  ctx.filter = `blur(${Math.max(1, W / 420)}px)`;
   ctx.drawImage(low, 0, 0, W, H);
+  ctx.filter = "none";
   ctx.fillStyle = "rgba(0,0,0,0.22)";
   ctx.fillRect(0, 0, W, H);
 

@@ -95,6 +95,39 @@ export function renderShot(canvas: HTMLCanvasElement, request: RenderRequest): v
     ctx.restore();
   }
 
+  // Intégration dans la lumière de la scène : la carte reçoit un voile
+  // d'ambiance de l'univers et le reflet du plafonnier sur sa surface —
+  // sans ça, elle reste un « autocollant » posé sur le décor.
+  {
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(q[0].x, q[0].y);
+    ctx.lineTo(q[1].x, q[1].y);
+    ctx.lineTo(q[2].x, q[2].y);
+    ctx.lineTo(q[3].x, q[3].y);
+    ctx.closePath();
+    ctx.clip();
+
+    const topY = Math.min(q[0].y, q[1].y);
+    const botY = Math.max(q[2].y, q[3].y);
+    const tint = ctx.createLinearGradient(0, topY, 0, botY);
+    tint.addColorStop(0, `rgba(${theme.spot},${0.1 * request.halo})`);
+    tint.addColorStop(0.55, `rgba(${theme.spot},0.03)`);
+    tint.addColorStop(1, "rgba(4,4,12,0.16)");
+    ctx.fillStyle = tint;
+    ctx.fillRect(0, 0, W, H);
+
+    const sheen = ctx.createLinearGradient(q[0].x, q[0].y, q[2].x, q[2].y);
+    sheen.addColorStop(0.3, "rgba(255,255,255,0)");
+    sheen.addColorStop(0.42, `rgba(255,255,255,${0.06 * request.halo})`);
+    sheen.addColorStop(0.47, `rgba(255,255,255,${0.13 * request.halo})`);
+    sheen.addColorStop(0.54, `rgba(255,255,255,${0.05 * request.halo})`);
+    sheen.addColorStop(0.64, "rgba(255,255,255,0)");
+    ctx.fillStyle = sheen;
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  }
+
   if (mount.id === "case") drawCase(ctx, q, wCard);
   drawStandLegs(
     ctx,

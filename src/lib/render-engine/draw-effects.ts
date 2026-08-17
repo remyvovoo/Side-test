@@ -51,13 +51,22 @@ export function drawGroundShadow(ctx: CanvasRenderingContext2D, corners: Point2D
   const cym = (BL.y + BR.y) / 2;
   const w = Math.abs(BR.x - BL.x);
   ctx.save();
+  // Pénombre large et douce…
   const sh = ctx.createRadialGradient(cxm, cym, 0, cxm, cym, w * 0.72);
-  sh.addColorStop(0, "rgba(0,0,0,0.8)");
-  sh.addColorStop(0.55, "rgba(0,0,0,0.3)");
+  sh.addColorStop(0, "rgba(0,0,0,0.55)");
+  sh.addColorStop(0.55, "rgba(0,0,0,0.26)");
   sh.addColorStop(1, "rgba(0,0,0,0)");
   ctx.fillStyle = sh;
   ctx.beginPath();
   ctx.ellipse(cxm, cym + 3, w * 0.68, w * 0.075, 0, 0, 7);
+  ctx.fill();
+  // …et un cœur dense collé sous l'objet : c'est lui qui « pose » la carte au sol.
+  const core = ctx.createRadialGradient(cxm, cym, 0, cxm, cym, w * 0.34);
+  core.addColorStop(0, "rgba(0,0,0,0.85)");
+  core.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = core;
+  ctx.beginPath();
+  ctx.ellipse(cxm, cym + 1.5, w * 0.4, w * 0.034, 0, 0, 7);
   ctx.fill();
   ctx.restore();
 }

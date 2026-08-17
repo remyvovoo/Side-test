@@ -21,35 +21,55 @@ export function drawPlatform(
   const thick = wCard * 0.05;
 
   // --- Anneaux lumineux au sol, autour du podium ---
+  // L'intensité varie le long de l'anneau : plus brillant côté caméra, plus
+  // faible derrière l'objet — comme une vraie source lumineuse au sol.
   const ringGlow = Math.max(0.25, intensity);
+  const N = 72;
   [1.35, 1.62].forEach((k, idx) => {
-    const ring = projEllipse(cam, 0, 0, R * k, R * k * 0.66, groundY + thick, 72);
-    const alpha = (idx === 0 ? 0.5 : 0.28) * ringGlow;
+    const ring = projEllipse(cam, 0, 0, R * k, R * k * 0.66, groundY + thick, N);
+    const base = (idx === 0 ? 0.5 : 0.28) * ringGlow;
     ctx.save();
-    // halo diffus
-    ctx.strokeStyle = `rgba(${theme.spot},${alpha * 0.4})`;
-    ctx.lineWidth = wCard * 0.03;
-    ctx.filter = `blur(${wCard * 0.012}px)`;
-    pathPts(ctx, ring);
-    ctx.stroke();
-    // cœur net
-    ctx.filter = "none";
-    ctx.strokeStyle = `rgba(${theme.spot},${alpha})`;
-    ctx.lineWidth = wCard * 0.008;
-    pathPts(ctx, ring);
-    ctx.stroke();
+    ctx.lineCap = "round";
+    for (let pass = 0; pass < 2; pass++) {
+      ctx.filter = pass === 0 ? `blur(${wCard * 0.012}px)` : "none";
+      ctx.lineWidth = pass === 0 ? wCard * 0.03 : wCard * 0.008;
+      for (let i = 0; i < N; i++) {
+        const a = (i / N) * Math.PI * 2;
+        const frontness = (1 - Math.sin(a)) / 2; // 1 = face caméra, 0 = derrière
+        const alpha = base * (0.3 + 0.7 * frontness) * (pass === 0 ? 0.4 : 1);
+        const p0 = ring[i];
+        const p1 = ring[(i + 1) % N];
+        ctx.strokeStyle = `rgba(${theme.spot},${alpha})`;
+        ctx.beginPath();
+        ctx.moveTo(p0.x, p0.y);
+        ctx.lineTo(p1.x, p1.y);
+        ctx.stroke();
+      }
+    }
     ctx.restore();
   });
 
-  // --- Tranche du podium ---
+  // --- Tranche du podium : dégradé horizontal, cœur légèrement éclairé ---
   const top = projEllipse(cam, 0, 0, R, R * 0.66, groundY, 64);
   const bot = projEllipse(cam, 0, 0, R, R * 0.66, groundY + thick, 64);
+  let eMinX = Infinity,
+    eMaxX = -Infinity;
+  for (const p of top) {
+    if (p.x < eMinX) eMinX = p.x;
+    if (p.x > eMaxX) eMaxX = p.x;
+  }
+  const edge = ctx.createLinearGradient(eMinX, 0, eMaxX, 0);
+  edge.addColorStop(0, "rgba(2,2,6,0.8)");
+  edge.addColorStop(0.5, `rgba(${theme.spot},${0.14 * intensity})`);
+  edge.addColorStop(1, "rgba(2,2,6,0.8)");
   ctx.beginPath();
   ctx.moveTo(top[0].x, top[0].y);
   for (let i = 1; i < top.length; i++) ctx.lineTo(top[i].x, top[i].y);
   for (let j = bot.length - 1; j >= 0; j--) ctx.lineTo(bot[j].x, bot[j].y);
   ctx.closePath();
-  ctx.fillStyle = "rgba(0,0,0,0.55)";
+  ctx.fillStyle = "rgba(0,0,0,0.62)";
+  ctx.fill();
+  ctx.fillStyle = edge;
   ctx.fill();
 
   // --- Plateau du podium ---

@@ -1,5 +1,6 @@
 import { makeCam, cardCorners } from "./geometry";
 import { drawBg } from "./draw-background";
+import { drawPlatform } from "./draw-platform";
 import { drawStandBase, drawStandLegs, drawCase } from "./draw-stand";
 import { drawGroundShadow, drawReflection, drawPerspective } from "./draw-effects";
 import { drawLogoBadge, drawInfoTag } from "./draw-overlays";
@@ -39,6 +40,9 @@ export function renderShot(canvas: HTMLCanvasElement, request: RenderRequest): v
   const liftY = hCard * 0.42;
   const ang = (shot.angle * 16 * Math.PI) / 180;
   const q = cardCorners(cam, wCard, hCard, ang, liftY);
+
+  // Podium de présentation : dessiné avant l'objet, il pose la scène.
+  drawPlatform(ctx, cam, wCard, liftY, theme, request.halo);
 
   const cx = (q[0].x + q[1].x + q[2].x + q[3].x) / 4;
   const cy = (q[0].y + q[1].y + q[2].y + q[3].y) / 4;

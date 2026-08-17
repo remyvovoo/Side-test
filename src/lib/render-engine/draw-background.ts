@@ -30,11 +30,37 @@ export function drawBg(
   lc.fillStyle = fg;
   lc.fillRect(0, hz, lw, lh - hz);
 
+  // Plafonnier de showroom : nappe de lumière douce qui tombe du haut du mur.
+  const ceil = lc.createRadialGradient(lw / 2, -lh * 0.22, 0, lw / 2, -lh * 0.22, lw * 0.75);
+  ceil.addColorStop(0, `rgba(235,240,255,${spotAlpha * 0.22})`);
+  ceil.addColorStop(0.5, `rgba(235,240,255,${spotAlpha * 0.07})`);
+  ceil.addColorStop(1, "rgba(235,240,255,0)");
+  lc.fillStyle = ceil;
+  lc.fillRect(0, 0, lw, lh);
+
+  // Spot principal derrière l'objet : un cœur net dans un halo large.
   const sp = lc.createRadialGradient(lw / 2, lh * 0.3, 0, lw / 2, lh * 0.3, lw * 0.48);
-  sp.addColorStop(0, `rgba(${t.spot},${spotAlpha * 0.18})`);
+  sp.addColorStop(0, `rgba(${t.spot},${spotAlpha * 0.26})`);
   sp.addColorStop(1, `rgba(${t.spot},0)`);
   lc.fillStyle = sp;
   lc.fillRect(0, 0, lw, lh);
+  const spCore = lc.createRadialGradient(lw / 2, lh * 0.32, 0, lw / 2, lh * 0.32, lw * 0.2);
+  spCore.addColorStop(0, `rgba(${t.spot},${spotAlpha * 0.2})`);
+  spCore.addColorStop(1, `rgba(${t.spot},0)`);
+  lc.fillStyle = spCore;
+  lc.fillRect(0, 0, lw, lh);
+
+  // Sol brillant : le spot se reflète en nappe douce sous la ligne d'horizon.
+  lc.save();
+  lc.beginPath();
+  lc.rect(0, hz, lw, lh - hz);
+  lc.clip();
+  const sheen = lc.createRadialGradient(lw / 2, hz + (lh - hz) * 0.35, 0, lw / 2, hz + (lh - hz) * 0.35, lw * 0.42);
+  sheen.addColorStop(0, `rgba(${t.spot},${spotAlpha * 0.16})`);
+  sheen.addColorStop(1, `rgba(${t.spot},0)`);
+  lc.fillStyle = sheen;
+  lc.fillRect(0, hz, lw, lh - hz);
+  lc.restore();
 
   ctx.imageSmoothingEnabled = true;
   ctx.drawImage(low, 0, 0, W, H);

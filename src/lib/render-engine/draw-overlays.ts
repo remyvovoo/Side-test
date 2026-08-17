@@ -8,44 +8,45 @@ export function drawLogoBadge(
   logoImage: CanvasImageSource | null,
   logoText: string
 ) {
+  // Décision produit (Remy) : le logo doit être nettement visible sur le visuel.
   const txt = logoText || "cardshot";
   const s = W / 1000;
-  ctx.font = `600 ${15 * s}px -apple-system,sans-serif`;
+  ctx.font = `600 ${22 * s}px -apple-system,sans-serif`;
   const tw = ctx.measureText(txt).width;
-  const bw = tw + 58 * s;
-  const bh = 40 * s;
-  const x = W - bw - 24 * s;
-  const y = H - bh - 22 * s;
+  const bw = tw + 82 * s;
+  const bh = 56 * s;
+  const x = W - bw - 26 * s;
+  const y = H - bh - 26 * s;
 
   ctx.save();
-  ctx.fillStyle = "rgba(8,6,16,0.6)";
-  roundRect(ctx, x, y, bw, bh, 20 * s);
+  ctx.fillStyle = "rgba(8,6,16,0.74)";
+  roundRect(ctx, x, y, bw, bh, 28 * s);
   ctx.fill();
-  ctx.strokeStyle = "rgba(255,255,255,0.14)";
-  ctx.lineWidth = 1;
-  roundRect(ctx, x, y, bw, bh, 20 * s);
+  ctx.strokeStyle = "rgba(255,255,255,0.2)";
+  ctx.lineWidth = Math.max(1, 1.2 * s);
+  roundRect(ctx, x, y, bw, bh, 28 * s);
   ctx.stroke();
 
   if (logoImage) {
     ctx.save();
-    roundRect(ctx, x + 8 * s, y + 8 * s, 24 * s, 24 * s, 7 * s);
+    roundRect(ctx, x + 10 * s, y + 10 * s, 36 * s, 36 * s, 10 * s);
     ctx.clip();
-    ctx.drawImage(logoImage, x + 8 * s, y + 8 * s, 24 * s, 24 * s);
+    ctx.drawImage(logoImage, x + 10 * s, y + 10 * s, 36 * s, 36 * s);
     ctx.restore();
   } else {
     ctx.fillStyle = "#8b7cf8";
-    roundRect(ctx, x + 8 * s, y + 8 * s, 24 * s, 24 * s, 7 * s);
+    roundRect(ctx, x + 10 * s, y + 10 * s, 36 * s, 36 * s, 10 * s);
     ctx.fill();
     ctx.fillStyle = "#fff";
-    ctx.font = `700 ${11 * s}px -apple-system,sans-serif`;
+    ctx.font = `700 ${16 * s}px -apple-system,sans-serif`;
     ctx.textAlign = "center";
-    ctx.fillText("CS", x + 20 * s, y + 24 * s);
+    ctx.fillText("CS", x + 28 * s, y + 33.5 * s);
     ctx.textAlign = "left";
   }
 
-  ctx.font = `600 ${15 * s}px -apple-system,sans-serif`;
-  ctx.fillStyle = "rgba(255,255,255,0.88)";
-  ctx.fillText(txt, x + 40 * s, y + 25 * s);
+  ctx.font = `600 ${22 * s}px -apple-system,sans-serif`;
+  ctx.fillStyle = "rgba(255,255,255,0.94)";
+  ctx.fillText(txt, x + 56 * s, y + 36 * s);
   ctx.restore();
 }
 

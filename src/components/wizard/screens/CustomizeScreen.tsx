@@ -2,10 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { renderShot, THEMES, MOUNTS, type CardInfo } from "@/lib/render-engine";
-import { drawBg } from "@/lib/render-engine/draw-background";
-import { demoCard } from "@/lib/wizard/demo-card";
 import { buildShotList } from "@/lib/wizard/shot-list";
-import { EMPTY_CARD_INFO } from "@/lib/wizard/types";
+import { CARD_CONDITIONS } from "@/lib/wizard/types";
+import { MountPreview, ThemeChipPreview } from "@/components/studio/previews";
 
 interface CustomizeScreenProps {
   rectoImage: HTMLImageElement;
@@ -27,38 +26,9 @@ interface CustomizeScreenProps {
   onCardInfoChange: (info: CardInfo) => void;
   onShotIndexChange: (i: number) => void;
   onContinue: () => void;
-}
-
-function MountPreview({ mountIdx, angle }: { mountIdx: number; angle: -1 | 0 | 1 }) {
-  const ref = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    if (!ref.current) return;
-    renderShot(ref.current, {
-      shot: { face: "recto", angle, name: "" },
-      rectoImage: demoCard(),
-      versoImage: null,
-      mount: MOUNTS[mountIdx],
-      theme: THEMES[0],
-      reflect: 0.5,
-      halo: 0.7,
-      logoImage: null,
-      logoText: "",
-      cardInfo: EMPTY_CARD_INFO,
-      size: 300,
-    });
-  }, [mountIdx, angle]);
-  return <canvas ref={ref} />;
-}
-
-function ThemeChip({ themeIdx }: { themeIdx: number }) {
-  const ref = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    if (!ref.current) return;
-    ref.current.width = 208;
-    ref.current.height = 130;
-    drawBg(ref.current.getContext("2d")!, 208, 130, THEMES[themeIdx], 0.8);
-  }, [themeIdx]);
-  return <canvas ref={ref} />;
+  /** Mode espace connecté : le studio est un aperçu, les réglages sont derrière « Ajuster ». */
+  compact?: boolean;
+  onSaveAsDefaults?: () => void;
 }
 
 export function CustomizeScreen({
@@ -81,10 +51,13 @@ export function CustomizeScreen({
   onCardInfoChange,
   onShotIndexChange,
   onContinue,
+  compact = false,
+  onSaveAsDefaults,
 }: CustomizeScreenProps) {
   const mainCanvasRef = useRef<HTMLCanvasElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
-  const [openSection, setOpenSection] = useState<"info" | "logo" | "adv" | null>(null);
+  const [openSection, setOpenSection] = useState<"info" | "logo" | "adv" | null>(compact ? "info" : null);
+  const [adjustOpen, setAdjustOpen] = useState(false);
 
   const shots = useMemo(() => buildShotList(!!versoImage), [versoImage]);
   const currentShotIndex = shotIndex >= shots.length ? 0 : shotIndex;
@@ -136,6 +109,7 @@ export function CustomizeScreen({
         </div>
 
         <div className="custo-controls">
+          <div className={compact && !adjustOpen ? "cs-hidden" : undefined}>
           <span className="section-label">Présentoir</span>
           <div className="opt-grid">
             {MOUNTS.map((m, i) => (
@@ -161,10 +135,11 @@ export function CustomizeScreen({
                 className={`theme-chip${themeIndex === i ? " selected" : ""}`}
                 onClick={() => onThemeChange(i)}
               >
-                <ThemeChip themeIdx={i} />
+                <ThemeChipPreview themeIdx={i} />
                 <div className="theme-chip-name">{t.name}</div>
               </div>
             ))}
+          </div>
           </div>
 
           <div className={`cs-collapse${openSection === "info" ? " open" : ""}`}>
@@ -225,9 +200,34 @@ export function CustomizeScreen({
                   onChange={(e) => onCardInfoChange({ ...cardInfo, language: e.target.value })}
                 />
               </div>
+              <div className="field-grid" style={{ marginTop: 8 }}>
+                <select
+                  value={cardInfo.condition}
+                  onChange={(e) => onCardInfoChange({ ...cardInfo, condition: e.target.value })}
+                >
+                  <option value="">État de la carte</option>
+                  {CARD_CONDITIONS.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 
+          {compact && (
+            <button
+              className="btn btn-ghost btn-sm cs-adjust-toggle"
+              onClick={() => setAdjustOpen((o) => !o)}
+              type="button"
+            >
+              <i className={`ti ${adjustOpen ? "ti-chevron-up" : "ti-adjustments"}`} />{" "}
+              {adjustOpen ? "Masquer les réglages du studio" : "Ajuster le studio"}
+            </button>
+          )}
+
+          <div className={compact && !adjustOpen ? "cs-hidden" : undefined}>
           <div className={`cs-collapse${openSection === "logo" ? " open" : ""}`}>
             <div className="cs-collapse-head" onClick={() => setOpenSection(openSection === "logo" ? null : "logo")}>
               <span>
@@ -324,6 +324,13 @@ export function CustomizeScreen({
                 />
               </div>
             </div>
+          </div>
+
+          {compact && onSaveAsDefaults && (
+            <button className="btn btn-ghost btn-sm" style={{ marginTop: 10 }} onClick={onSaveAsDefaults} type="button">
+              <i className="ti ti-star" /> Définir comme mes réglages par défaut
+            </button>
+          )}
           </div>
 
           <button className="btn btn-primary" style={{ marginTop: 14 }} onClick={onContinue} type="button">

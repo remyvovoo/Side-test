@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
 import { useLocale } from "@/components/i18n/LocaleProvider";
 import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
+import { AuthBrand } from "./AuthBrand";
 
 export function LoginForm() {
   const { dictionary: dict } = useLocale();
@@ -27,11 +28,12 @@ export function LoginForm() {
       setSubmitting(false);
       return;
     }
-    router.push("/");
+    router.push("/dashboard");
   }
 
   return (
     <div className="auth-page">
+      <AuthBrand />
       <LanguageSwitcher />
       <div className="auth-card">
         <div className="auth-title">{t.title}</div>
@@ -61,6 +63,9 @@ export function LoginForm() {
               required
               autoComplete="current-password"
             />
+            <a className="auth-forgot-link" onClick={() => router.push("/forgot-password")}>
+              {t.forgotLink}
+            </a>
           </div>
           <button className="btn btn-primary" type="submit" disabled={submitting} style={{ marginTop: 8 }}>
             {t.submit}

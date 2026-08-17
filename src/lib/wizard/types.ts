@@ -43,6 +43,28 @@ export const EMPTY_CARD_INFO: CardInfo = {
   rarity: "",
   series: "",
   language: "",
+  condition: "",
 };
+
+/** Raretés proposées dans les formulaires (studio + fiche carte). */
+export const CARD_RARITIES = [
+  "✦ Hors-série",
+  "★★★ SAR",
+  "★★ Ultra Rare",
+  "★ Rare",
+  "⬡ Promo",
+  "◆◆ Peu commune",
+  "◆ Commune",
+] as const;
+
+/** Grille d'états classique des vendeurs de cartes. */
+export const CARD_CONDITIONS = [
+  "Neuf sous scellé",
+  "Near Mint",
+  "Excellent",
+  "Bon",
+  "Moyen",
+  "Abîmé",
+] as const;
 
 export type ExportFormat = "jpg" | "png";

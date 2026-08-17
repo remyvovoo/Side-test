@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { compressImage, loadImage, autoDetectBounds } from "@/lib/wizard/image-utils";
+import { compressImage, loadImage, autoDetectBounds, autoStraighten, cropToVisible } from "@/lib/wizard/image-utils";
 import { removeBackground, RemoveBackgroundError } from "@/lib/wizard/remove-background";
 import { computeSharpnessScore, computeResolutionScore } from "@/lib/quality/analyze-photo";
 import { computeFramingScore } from "@/lib/quality/analyze-framing";
 import { combineQuality } from "@/lib/quality/combine-quality";
+import { hashBlob, readQualityCache, writeQualityCache } from "@/lib/quality/quality-cache";
 import type { QualityResult } from "@/lib/quality/types";
 
 interface ProcessScreenProps {
@@ -26,10 +27,15 @@ export function ProcessScreen({ sourceBlob, onComplete, onRetake }: ProcessScree
     async function run() {
       try {
         setError(null);
+
+        // Même photo déjà analysée → on ressort exactement le même score.
+        const sourceHash = await hashBlob(sourceBlob);
+        const cachedQuality = sourceHash ? readQualityCache(sourceHash) : null;
+
         setMessage("Analyse de la netteté et de la résolution…");
         const sourceImage = await loadImage(previewUrl);
-        const sharpness = computeSharpnessScore(sourceImage);
-        const resolution = computeResolutionScore(sourceImage);
+        const sharpness = cachedQuality ? cachedQuality.sharpness : computeSharpnessScore(sourceImage);
+        const resolution = cachedQuality ? cachedQuality.resolution : computeResolutionScore(sourceImage);
 
         setMessage("Compression avant envoi…");
         const compressed = await compressImage(sourceBlob);
@@ -38,12 +44,22 @@ export function ProcessScreen({ sourceBlob, onComplete, onRetake }: ProcessScree
         const cutoutBlob = await removeBackground(compressed);
         const cutoutImage = await loadImage(URL.createObjectURL(cutoutBlob));
 
+        setMessage("Redressement de la carte…");
+        const straightened = await autoStraighten(cutoutImage);
+
         setMessage("Vérification du cadrage…");
-        const bounds = autoDetectBounds(cutoutImage);
-        const framing = computeFramingScore(bounds);
+        // Le cadrage est mesuré AVANT recentrage : il évalue la photo d'origine.
+        const bounds = autoDetectBounds(straightened);
+        const framing = cachedQuality ? cachedQuality.framing : computeFramingScore(bounds);
+
+        const quality = cachedQuality ?? combineQuality(sharpness, resolution, framing);
+        if (!cachedQuality && sourceHash) writeQualityCache(sourceHash, quality);
+
+        // Recentrage : la carte remplit l'image au lieu de flotter dans les marges.
+        const centered = await cropToVisible(straightened);
 
         if (cancelled) return;
-        onComplete(cutoutImage, combineQuality(sharpness, resolution, framing));
+        onComplete(centered, quality);
       } catch (e) {
         if (cancelled) return;
         let m = "Le traitement a échoué.";

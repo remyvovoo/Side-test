@@ -49,9 +49,11 @@ export function drawLogoBadge(
   ctx.restore();
 }
 
+// Décision produit (Remy) : le prix ne doit jamais apparaître sur les photos —
+// il vit dans l'annonce, pas sur les visuels.
 export function drawInfoTag(ctx: CanvasRenderingContext2D, W: number, H: number, info: CardInfo) {
-  const { name, number, price, rarity } = info;
-  if (!(name || number || price || rarity)) return;
+  const { name, number, rarity } = info;
+  if (!(name || number || rarity)) return;
   const s = W / 1000;
   const l1 = name || "Ma carte";
   const l2 = [number, rarity].filter(Boolean).join("  ·  ");
@@ -75,16 +77,5 @@ export function drawInfoTag(ctx: CanvasRenderingContext2D, W: number, H: number,
     ctx.font = `${14 * s}px -apple-system,sans-serif`;
     ctx.fillStyle = "rgba(255,255,255,0.55)";
     ctx.fillText(l2, tx + 18 * s, ty + 61 * s);
-  }
-  if (price) {
-    ctx.font = `700 ${26 * s}px -apple-system,sans-serif`;
-    const pw = ctx.measureText(price).width + 44 * s;
-    ctx.fillStyle = "rgba(255,196,77,0.96)";
-    roundRect(ctx, tx + tw + 10 * s, ty, pw, th, 13 * s);
-    ctx.fill();
-    ctx.fillStyle = "#1c0d00";
-    ctx.textAlign = "center";
-    ctx.fillText(price, tx + tw + 10 * s + pw / 2, ty + th / 2 + 9 * s);
-    ctx.textAlign = "left";
   }
 }

@@ -33,6 +33,8 @@ export interface CardInfo {
   rarity: string;
   series: string;
   language: string;
+  /** État de la carte (Near Mint, Excellent…) — alimente le modèle d'annonce. */
+  condition: string;
 }
 
 /**

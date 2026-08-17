@@ -44,7 +44,7 @@ export function HomeScreen({ onStart }: HomeScreenProps) {
             <button className="cta-main" onClick={onStart} type="button">
               <i className="ti ti-sparkles" /> Créer mes photos
             </button>
-            <div className="cta-sub">Gratuit · Sans inscription</div>
+            <div className="cta-sub">Essai gratuit 30 jours · Sans carte bancaire</div>
           </div>
         </div>
         <div className="hero-shot">

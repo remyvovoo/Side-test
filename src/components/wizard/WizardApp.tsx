@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { TopBar } from "./TopBar";
 import { StepsBar } from "./StepsBar";
 import { Toast } from "./Toast";
@@ -16,7 +17,7 @@ import { CropScreen } from "./screens/CropScreen";
 import { VersoScreen } from "./screens/VersoScreen";
 import { CustomizeScreen } from "./screens/CustomizeScreen";
 import { ExportScreen } from "./screens/ExportScreen";
-import { THEMES, MOUNTS, type RenderRequest } from "@/lib/render-engine";
+import { renderShot, THEMES, MOUNTS, type RenderRequest } from "@/lib/render-engine";
 import { STEP, BACK, EMPTY_CARD_INFO, type ScreenName, type Face, type ExportFormat } from "@/lib/wizard/types";
 import { buildShotList } from "@/lib/wizard/shot-list";
 import { buildDetailShotList } from "@/lib/detail-shots/detail-shot-list";
@@ -27,20 +28,65 @@ import type { QualityResult } from "@/lib/quality/types";
 
 type GuideTarget = "camera" | "gallery" | "tips";
 
-export function WizardApp() {
-  const [screen, setScreen] = useState<ScreenName>("home");
+interface WizardAppProps {
+  isAuthenticated: boolean;
+  initialThemeIndex?: number;
+  /** Mode espace connecté : pas de header public, démarre à la prise de photo,
+   *  sauvegarde la carte en base après l'export. */
+  embedded?: boolean;
+  initialSellerBoilerplate?: string;
+  /** Modèles d'annonce du vendeur (vides = modèles par défaut). */
+  titleTemplate?: string;
+  descriptionTemplate?: string;
+  /** Réglages studio par défaut (page « Mon studio »). */
+  initialMountIndex?: number;
+  initialReflect?: number;
+  initialHalo?: number;
+  initialLogoText?: string;
+  initialLogoImageUrl?: string;
+}
+
+export function WizardApp({
+  isAuthenticated,
+  initialThemeIndex = 0,
+  embedded = false,
+  initialSellerBoilerplate,
+  titleTemplate = "",
+  descriptionTemplate = "",
+  initialMountIndex = 0,
+  initialReflect = 0.5,
+  initialHalo = 0.7,
+  initialLogoText = "",
+  initialLogoImageUrl = "",
+}: WizardAppProps) {
+  const router = useRouter();
+  const [screen, setScreen] = useState<ScreenName>(embedded ? "source" : "home");
   const [face, setFace] = useState<Face>("recto");
 
   const [rectoImage, setRectoImage] = useState<HTMLImageElement | null>(null);
   const [versoImage, setVersoImage] = useState<HTMLImageElement | null>(null);
   const [pendingImage, setPendingImage] = useState<HTMLImageElement | null>(null);
 
-  const [mountIndex, setMountIndex] = useState(0);
-  const [themeIndex, setThemeIndex] = useState(0);
-  const [reflect, setReflect] = useState(0.5);
-  const [halo, setHalo] = useState(0.7);
+  const [mountIndex, setMountIndex] = useState(initialMountIndex);
+  const [themeIndex, setThemeIndex] = useState(initialThemeIndex);
+  const [reflect, setReflect] = useState(initialReflect);
+  const [halo, setHalo] = useState(initialHalo);
   const [logoImage, setLogoImage] = useState<HTMLImageElement | null>(null);
-  const [logoText, setLogoText] = useState("");
+  const [logoText, setLogoText] = useState(initialLogoText);
+
+  // Logo par défaut du compte (data URL) → image utilisable par le moteur.
+  useEffect(() => {
+    if (!initialLogoImageUrl) return;
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => {
+      if (!cancelled) setLogoImage(img);
+    };
+    img.src = initialLogoImageUrl;
+    return () => {
+      cancelled = true;
+    };
+  }, [initialLogoImageUrl]);
   const [cardInfo, setCardInfo] = useState(EMPTY_CARD_INFO);
   const [shotIndex, setShotIndex] = useState(0);
   const [selected, setSelected] = useState<Record<number, boolean>>({});
@@ -49,7 +95,9 @@ export function WizardApp() {
   const [format, setFormat] = useState<ExportFormat>("jpg");
   const [isDownloading, setIsDownloading] = useState(false);
 
-  const [sellerBoilerplate, setSellerBoilerplate] = useState(() => loadSellerBoilerplate());
+  const [sellerBoilerplate, setSellerBoilerplate] = useState(() =>
+    initialSellerBoilerplate !== undefined ? initialSellerBoilerplate : loadSellerBoilerplate()
+  );
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [profileModalOpenCount, setProfileModalOpenCount] = useState(0);
 
@@ -65,6 +113,9 @@ export function WizardApp() {
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Carte déjà enregistrée pour ce parcours (mode connecté) : évite les doublons
+  // quand on revient en arrière puis re-valide, et permet la mise à jour.
+  const savedCardIdRef = useRef<string | null>(null);
 
   function showToast(msg: string) {
     setToastMsg(msg);
@@ -77,10 +128,21 @@ export function WizardApp() {
     setScreen(next);
   }
   function goBack() {
-    go(BACK[screen]);
+    const prev = BACK[screen];
+    // En mode espace connecté, « retour » depuis le premier écran ramène au dashboard.
+    if (embedded && prev === "home" && screen === "source") {
+      router.push("/dashboard");
+      return;
+    }
+    go(prev);
   }
 
   function startFlow() {
+    // Le parcours de création est réservé aux comptes (essai gratuit 30 jours).
+    if (!isAuthenticated) {
+      router.push("/register");
+      return;
+    }
     setFace("recto");
     go("source");
   }
@@ -97,6 +159,7 @@ export function WizardApp() {
     setSelectedDetail({});
     setDescription("");
     setCardInfo(EMPTY_CARD_INFO);
+    savedCardIdRef.current = null;
     startFlow();
   }
 
@@ -172,7 +235,12 @@ export function WizardApp() {
   }
 
   function handleContinueToExport() {
-    setDescription(generateDescription(cardInfo, sellerBoilerplate));
+    const generated = generateDescription(cardInfo, {
+      titleTemplate,
+      descriptionTemplate,
+      boilerplate: sellerBoilerplate,
+    });
+    setDescription(generated);
     const allShots: Record<number, boolean> = {};
     buildShotList(!!versoImage).forEach((_shot, i) => (allShots[i] = true));
     setSelected(allShots);
@@ -180,11 +248,58 @@ export function WizardApp() {
     buildDetailShotList(!!versoImage).forEach((d) => (allDetail[d.id] = true));
     setSelectedDetail(allDetail);
     go("export");
+    // La carte entre dans « Mes cartes » dès cet écran — télécharger ou non.
+    if (embedded) void saveCardToAccount(generated);
   }
 
   function handleProfileSave(text: string) {
     setSellerBoilerplate(text);
     saveSellerBoilerplate(text);
+    if (embedded) {
+      fetch("/api/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sellerBoilerplate: text }),
+      }).catch(() => {});
+    }
+  }
+
+  /** Capture les réglages studio actuels comme défauts du compte (« Mon studio »). */
+  async function saveStudioAsDefaults() {
+    let logoDataUrl = "";
+    if (logoImage) {
+      if (logoImage.src.startsWith("data:")) {
+        logoDataUrl = logoImage.src;
+      } else {
+        try {
+          const c = document.createElement("canvas");
+          const MAX = 200;
+          const s = Math.min(MAX / logoImage.width, MAX / logoImage.height, 1);
+          c.width = Math.max(1, Math.round(logoImage.width * s));
+          c.height = Math.max(1, Math.round(logoImage.height * s));
+          c.getContext("2d")!.drawImage(logoImage, 0, 0, c.width, c.height);
+          logoDataUrl = c.toDataURL("image/png");
+        } catch {}
+      }
+    }
+    try {
+      const res = await fetch("/api/profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          defaultThemeId: THEMES[themeIndex].id,
+          defaultMountId: MOUNTS[mountIndex].id,
+          defaultReflect: reflect,
+          defaultHalo: halo,
+          defaultLogoText: logoText,
+          defaultLogoImage: logoDataUrl,
+        }),
+      });
+      if (!res.ok) throw new Error();
+      showToast("Réglages enregistrés comme défauts ⭐");
+    } catch {
+      showToast("⚠️ Impossible d'enregistrer les défauts");
+    }
   }
 
   // ----- Export -----
@@ -200,6 +315,54 @@ export function WizardApp() {
       logoText,
       cardInfo,
     };
+  }
+
+  /** Vignette JPEG (~300 px) du premier visuel, pour la galerie « Mes cartes ». */
+  function buildThumbnail(): string | null {
+    if (!rectoImage) return null;
+    try {
+      const canvas = document.createElement("canvas");
+      renderShot(canvas, {
+        ...buildBaseRequest(),
+        shot: buildShotList(!!versoImage)[0],
+        size: 300,
+      });
+      return canvas.toDataURL("image/jpeg", 0.72);
+    } catch {
+      return null;
+    }
+  }
+
+  async function saveCardToAccount(desc: string) {
+    const thumbnail = buildThumbnail();
+    if (!thumbnail) {
+      showToast("Sauvegarde impossible (aperçu non généré)");
+      return;
+    }
+    const payload = {
+      name: cardInfo.name || "Carte sans nom",
+      thumbnail,
+      cardInfo: { ...cardInfo },
+      description: desc,
+      themeId: THEMES[themeIndex].id,
+      mountId: MOUNTS[mountIndex].id,
+      hasVerso: !!versoImage,
+    };
+    try {
+      const existingId = savedCardIdRef.current;
+      const res = await fetch(existingId ? `/api/cards/${existingId}` : "/api/cards", {
+        method: existingId ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(`save failed (${res.status})`);
+      const body = (await res.json()) as { cardId?: string };
+      if (body.cardId) savedCardIdRef.current = body.cardId;
+      if (!existingId) showToast("Carte ajoutée dans « Mes cartes »");
+    } catch (e) {
+      console.error("[cardshot] card save failed", e);
+      showToast("⚠️ Sauvegarde dans « Mes cartes » impossible");
+    }
   }
 
   async function performDownload() {
@@ -220,6 +383,9 @@ export function WizardApp() {
         format,
       });
       showToast("ZIP téléchargé");
+      // Met à jour la carte avec la description telle qu'éditée avant téléchargement
+      // (ou la crée si la première sauvegarde avait échoué).
+      if (embedded) await saveCardToAccount(description);
     } catch (e) {
       console.error("[cardshot] zip export failed", e);
       showToast("Le ZIP a échoué, réessaie");
@@ -229,6 +395,11 @@ export function WizardApp() {
   }
 
   function handleDownloadClick() {
+    // Connecté : on a déjà son e-mail, pas de fenêtre de collecte.
+    if (embedded) {
+      performDownload();
+      return;
+    }
     let done = false;
     try {
       done = localStorage.getItem("cs_email_done") === "1";
@@ -260,16 +431,23 @@ export function WizardApp() {
   const isWide = screen === "customize" || screen === "export";
 
   return (
-    <div className={`app${isWide ? " wide" : ""}`}>
-      <TopBar
-        showBack={screen !== "home"}
-        onBack={goBack}
-        onBrandClick={() => go("home")}
-        onProfileClick={() => {
-          setProfileModalOpenCount((n) => n + 1);
-          setProfileModalOpen(true);
-        }}
-      />
+    <div className={`app${isWide ? " wide" : ""}${embedded ? " embedded" : ""}`}>
+      {!embedded && (
+        <TopBar
+          showBack={screen !== "home"}
+          onBack={goBack}
+          onBrandClick={() => go("home")}
+          onProfileClick={() => {
+            setProfileModalOpenCount((n) => n + 1);
+            setProfileModalOpen(true);
+          }}
+        />
+      )}
+      {embedded && (
+        <button className="wizard-embedded-back" onClick={goBack} type="button">
+          <i className="ti ti-arrow-left" /> Retour
+        </button>
+      )}
       <StepsBar step={step} />
 
       {screen === "home" && <HomeScreen onStart={startFlow} />}
@@ -325,6 +503,8 @@ export function WizardApp() {
           onCardInfoChange={setCardInfo}
           onShotIndexChange={setShotIndex}
           onContinue={handleContinueToExport}
+          compact={embedded}
+          onSaveAsDefaults={embedded ? saveStudioAsDefaults : undefined}
         />
       )}
 

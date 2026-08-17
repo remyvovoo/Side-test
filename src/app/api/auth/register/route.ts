@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db/prisma";
 import { hashPassword, isPasswordStrongEnough } from "@/lib/auth/password";
+import { sendEmail } from "@/lib/email/send-email";
+import { welcomeEmail } from "@/lib/email/templates";
 
 const RegisterSchema = z.object({
   email: z.string().email(),
@@ -31,6 +33,9 @@ export async function POST(req: NextRequest) {
   const user = await prisma.user.create({
     data: { email: normalizedEmail, passwordHash, locale },
   });
+
+  // Bienvenue — envoi non bloquant : l'inscription n'attend pas Mailjet.
+  void sendEmail(user.email, welcomeEmail(user.locale, req.nextUrl.origin));
 
   return NextResponse.json({ ok: true, userId: user.id });
 }

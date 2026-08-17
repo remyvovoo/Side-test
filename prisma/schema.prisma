@@ -19,11 +19,54 @@ enum Locale {
 }
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
-  role         Role     @default(SELLER)
-  locale       Locale   @default(fr)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id             String   @id @default(cuid())
+  email          String   @unique
+  passwordHash   String
+  role           Role     @default(SELLER)
+  locale         Locale   @default(fr)
+  // Choix faits pendant l'onboarding (étapes 2 et 3)
+  defaultThemeId String?
+  monthlyVolume  Int?
+  // Texte type du vendeur, repris dans chaque annonce générée
+  sellerBoilerplate String @default("")
+  // Modèles d'annonce à variables ({nom}, {série}, {état}…) — vides = modèles par défaut
+  titleTemplate       String @default("")
+  descriptionTemplate String @default("")
+  // Réglages studio par défaut (page « Mon studio ») — appliqués à chaque nouvelle carte
+  defaultMountId   String?
+  defaultReflect   Float?
+  defaultHalo      Float?
+  defaultLogoText  String @default("")
+  defaultLogoImage String @default("") // data URL du logo importé (vide = logo Cardshot)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  passwordResetTokens PasswordResetToken[]
+  cards               Card[]
+}
+
+// Une annonce générée : réglages + vignette, pour la galerie « Mes cartes ».
+// Les visuels pleine taille ne sont pas stockés (regénérables par le moteur) ;
+// le stockage de fichiers (Vercel Blob) viendra plus tard si besoin.
+model Card {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  thumbnail   String // data URL JPEG ~300px générée par le moteur de rendu
+  cardInfo    Json
+  description String
+  themeId     String
+  mountId     String
+  hasVerso    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isUsed    Boolean  @default(false)
+  createdAt DateTime @default(now())
 }

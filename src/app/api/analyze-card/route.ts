@@ -13,8 +13,13 @@ export const maxDuration = 60;
 /** Nombre d'identifications offertes par compte pendant l'essai. */
 const ANALYSIS_LIMIT = Number(process.env.AI_ANALYSIS_LIMIT ?? 30);
 
-/** Modèle de vision utilisé. Voir la note de coût dans CLAUDE.md avant de changer. */
-const MODEL = "claude-opus-5";
+/**
+ * Modèle utilisé pour la lecture de la photo et la recherche en ligne. Voir la
+ * note de coût dans CLAUDE.md avant de changer la valeur par défaut.
+ * Réglable sans redéploiement via ANTHROPIC_MODEL (utile si le modèle par
+ * défaut est temporairement saturé côté Anthropic).
+ */
+const MODEL = process.env.ANTHROPIC_MODEL || "claude-opus-5";
 
 const BodySchema = z.object({
   // data URL JPEG produite côté navigateur (~1500 px, qualité 0.85)
@@ -88,6 +93,121 @@ const FactsSchema = z.object({
   rarity: z.string().max(40),
 });
 
+/**
+ * Étape 2 — le code imprimé (« 052/196 ») identifie la carte de façon unique
+ * dans les bases de vendeurs. On l'utilise pour retrouver en ligne l'extension
+ * et la rareté, qui ne sont presque jamais écrites sur la carte elle-même.
+ */
+const LOOKUP_SCHEMA = {
+  type: "object",
+  properties: {
+    series: {
+      type: "string",
+      description:
+        "Nom de l'extension (set) à laquelle appartient la carte, dans la langue de la carte. Chaîne vide si les recherches ne permettent pas de conclure.",
+    },
+    rarity: {
+      type: "string",
+      enum: ["", ...CARD_RARITIES],
+      description: "Niveau de rareté correspondant. Chaîne vide en cas de doute.",
+    },
+    source: {
+      type: "string",
+      description: "URL de la page qui a servi de référence. Chaîne vide si aucune.",
+    },
+  },
+  required: ["series", "rarity", "source"],
+  additionalProperties: false,
+} as const;
+
+const LOOKUP_SYSTEM_PROMPT = `Tu complètes la fiche d'une carte à collectionner mise en vente, à partir des informations imprimées relevées sur la photo.
+
+Le code d'identification (ex : « 052/196 ») et le nom suffisent en général à retrouver la carte dans les bases de vendeurs (Cardmarket, boutiques spécialisées, bases de données de cartes). Utilise la recherche web pour identifier l'extension et la rareté.
+
+Règles absolues :
+- Tu ne conclus que si les résultats concordent. Si tu ne trouves pas, ou si les résultats se contredisent, renvoie des chaînes vides : le vendeur complétera à la main.
+- Le nom de l'extension est donné dans la langue de la carte (une carte française → le nom français de l'extension).
+- Tu ne cherches ni le prix ni l'état : ce n'est pas ton rôle.`;
+
+const LookupSchema = z.object({
+  series: z.string().max(120),
+  rarity: z.string().max(40),
+  source: z.string().max(500),
+});
+
+/** Dernier bloc texte exploitable d'une réponse (une réponse outillée en contient plusieurs). */
+function readJsonBlocks<T>(
+  blocks: Anthropic.ContentBlock[],
+  schema: z.ZodType<T>
+): T | null {
+  const texts = blocks.filter((b) => b.type === "text").map((b) => b.text);
+  for (const text of texts.reverse()) {
+    try {
+      return schema.parse(JSON.parse(text));
+    } catch {
+      // bloc de commentaire du modèle, on regarde le précédent
+    }
+  }
+  return null;
+}
+
+/**
+ * Cherche en ligne l'extension et la rareté à partir du code imprimé. Renvoie
+ * null si la recherche est inutile (pas de code lu, rien à compléter) ou si
+ * elle échoue : l'identification de la photo reste acquise dans tous les cas.
+ */
+async function lookupFromCode(
+  client: Anthropic,
+  facts: CardFacts
+): Promise<z.infer<typeof LookupSchema> | null> {
+  const needsSeries = !facts.series.trim();
+  const needsRarity = !facts.rarity.trim();
+  if (!facts.number.trim() || (!needsSeries && !needsRarity)) return null;
+
+  const messages: Anthropic.MessageParam[] = [
+    {
+      role: "user",
+      content: `Carte à identifier :
+- nom imprimé : ${facts.name || "non lisible"}
+- code imprimé : ${facts.number}
+- langue : ${facts.language || "non déterminée"}
+
+Trouve l'extension à laquelle elle appartient et son niveau de rareté.`,
+    },
+  ];
+
+  try {
+    // La recherche web enchaîne plusieurs tours : le modèle peut rendre la main
+    // avec « pause_turn », on le relance en lui repassant son propre travail.
+    for (let round = 0; round < 4; round++) {
+      const response = await client.messages.create(
+        {
+          model: MODEL,
+          max_tokens: 4096,
+          system: LOOKUP_SYSTEM_PROMPT,
+          output_config: { effort: "medium", format: { type: "json_schema", schema: LOOKUP_SCHEMA } },
+          tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 5 }],
+          messages,
+        },
+        // Plafond de temps : au-delà, on préfère livrer l'extraction seule.
+        { timeout: 30_000 }
+      );
+      if (response.stop_reason === "refusal") return null;
+      if (response.stop_reason !== "pause_turn") {
+        const lookup = readJsonBlocks(response.content, LookupSchema);
+        if (lookup?.source) {
+          console.info("[cardshot] analyze-card: extension trouvée via", lookup.source);
+        }
+        return lookup;
+      }
+      messages.push({ role: "assistant", content: response.content });
+    }
+  } catch (e) {
+    console.warn("[cardshot] analyze-card: recherche en ligne indisponible", e);
+  }
+  return null;
+}
+
 export async function POST(req: NextRequest) {
   const session = await auth();
   if (!session?.user?.id) {
@@ -126,7 +246,9 @@ export async function POST(req: NextRequest) {
     | "image/png"
     | "image/webp";
 
-  const client = new Anthropic({ apiKey });
+  // L'API peut renvoyer un 529 « saturé » passager : le SDK réessaie tout seul,
+  // avec attente progressive, avant de nous rendre la main.
+  const client = new Anthropic({ apiKey, maxRetries: 3 });
 
   let response;
   try {
@@ -155,8 +277,10 @@ export async function POST(req: NextRequest) {
     });
   } catch (e) {
     console.error("[cardshot] analyze-card: appel Claude en échec", e);
-    if (e instanceof Anthropic.RateLimitError) {
-      return NextResponse.json({ error: "rate_limited" }, { status: 429 });
+    // Saturation passagère (529) ou débit dépassé (429) : ce n'est pas la photo
+    // qui est en cause, réessayer dans quelques secondes suffit.
+    if (e instanceof Anthropic.APIError && (e.status === 529 || e.status === 429)) {
+      return NextResponse.json({ error: "overloaded" }, { status: 503 });
     }
     return NextResponse.json({ error: "analysis_failed" }, { status: 502 });
   }
@@ -168,13 +292,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "analysis_refused" }, { status: 422 });
   }
 
-  const textBlock = response.content.find((b) => b.type === "text");
-  let facts: CardFacts;
-  try {
-    facts = FactsSchema.parse(JSON.parse(textBlock?.text ?? ""));
-  } catch (e) {
-    console.error("[cardshot] analyze-card: réponse illisible", e);
+  const facts = readJsonBlocks<CardFacts>(response.content, FactsSchema);
+  if (!facts) {
+    console.error("[cardshot] analyze-card: réponse illisible");
     return NextResponse.json({ error: "analysis_failed" }, { status: 502 });
+  }
+
+  // Étape 2 : l'extension et la rareté se déduisent du code imprimé. Recherche
+  // best-effort — si elle échoue ou traîne, on renvoie quand même ce que la
+  // photo a donné.
+  const enrichment = await lookupFromCode(client, facts);
+  if (enrichment) {
+    if (!facts.series.trim()) facts.series = enrichment.series;
+    if (!facts.rarity.trim()) facts.rarity = enrichment.rarity;
   }
 
   // On ne décompte qu'une analyse réellement aboutie.
@@ -187,6 +317,10 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     ok: true,
     facts,
+    // Vrai quand la série ou la rareté vient d'une recherche en ligne et non de
+    // la photo : le vendeur doit le savoir pour vérifier en priorité ces champs.
+    enrichedOnline: !!enrichment && !!(enrichment.series || enrichment.rarity),
+    source: enrichment?.source ?? "",
     usage: { used: updated.aiAnalysisCount, limit: ANALYSIS_LIMIT },
   });
 }

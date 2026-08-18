@@ -35,6 +35,8 @@ function aiErrorMessage(e: unknown): string {
     switch (e.code) {
       case "quota_exceeded":
         return `Limite d'essai atteinte (${e.limit ?? 30} identifications).`;
+      case "overloaded":
+        return "Le service d'IA est saturé. Réessaie dans quelques secondes.";
       case "not_configured":
         return "Identification IA pas encore configurée.";
       case "unauthorized":
@@ -202,14 +204,16 @@ export function WizardApp({
     setAiStatus("running");
     setAiMessage("");
     try {
-      const { facts } = await analyzeCard(image);
+      const { facts, enrichedOnline } = await analyzeCard(image);
       const foundSomething = Object.values(facts).some((v) => v.trim());
       setCardInfo((info) => mergeFacts(info, facts));
       setAiStatus("done");
       setAiMessage(
-        foundSomething
-          ? "Champs préremplis par l'IA — vérifie-les avant de publier."
-          : "Rien de lisible sur cette photo : saisis les infos à la main."
+        !foundSomething
+          ? "Rien de lisible sur cette photo : saisis les infos à la main."
+          : enrichedOnline
+            ? "Champs préremplis — série et rareté retrouvées en ligne d'après le code de la carte. Vérifie avant de publier."
+            : "Champs préremplis par l'IA — vérifie-les avant de publier."
       );
     } catch (e) {
       console.error("[cardshot] identification IA", e);

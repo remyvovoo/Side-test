@@ -7,6 +7,7 @@ export type AnalyzeErrorCode =
   | "unauthorized"
   | "not_configured"
   | "quota_exceeded"
+  | "overloaded"
   | "refused"
   | "failed";
 
@@ -23,6 +24,10 @@ export class AnalyzeCardError extends Error {
 
 export interface AnalyzeCardResult {
   facts: CardFacts;
+  /** La série ou la rareté vient d'une recherche en ligne, pas de la photo. */
+  enrichedOnline: boolean;
+  /** Page de référence utilisée par la recherche (vide si aucune). */
+  source: string;
   usage: { used: number; limit: number };
 }
 
@@ -57,12 +62,20 @@ export async function analyzeCard(image: HTMLImageElement): Promise<AnalyzeCardR
     const body = (await res.json().catch(() => null)) as
       | { error?: string; limit?: number }
       | null;
-    const error = body?.error;
-    if (res.status === 401) throw new AnalyzeCardError("unauthorized");
-    if (res.status === 503) throw new AnalyzeCardError("not_configured");
-    if (error === "quota_exceeded") throw new AnalyzeCardError("quota_exceeded", body?.limit);
-    if (error === "analysis_refused") throw new AnalyzeCardError("refused");
-    throw new AnalyzeCardError("failed");
+    switch (body?.error) {
+      case "unauthorized":
+        throw new AnalyzeCardError("unauthorized");
+      case "service_not_configured":
+        throw new AnalyzeCardError("not_configured");
+      case "quota_exceeded":
+        throw new AnalyzeCardError("quota_exceeded", body?.limit);
+      case "overloaded":
+        throw new AnalyzeCardError("overloaded");
+      case "analysis_refused":
+        throw new AnalyzeCardError("refused");
+      default:
+        throw new AnalyzeCardError("failed");
+    }
   }
 
   return (await res.json()) as AnalyzeCardResult;

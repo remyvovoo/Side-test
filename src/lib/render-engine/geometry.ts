@@ -59,9 +59,15 @@ export function cardCorners(
   liftY: number
 ): Point2D[] {
   const hw = wCard / 2;
+  // Légère inclinaison vers l'arrière (pivot sur le bord inférieur) : une
+  // carte ne tient pas debout toute seule — elle repose sur un support
+  // invisible derrière elle, comme sur un chevalet.
+  const LEAN = (7 * Math.PI) / 180;
+  const cosL = Math.cos(LEAN);
+  const sinL = Math.sin(LEAN);
   const pts = [
-    { x: -hw, y: -hCard, z: 0 },
-    { x: hw, y: -hCard, z: 0 },
+    { x: -hw, y: -hCard * cosL, z: hCard * sinL },
+    { x: hw, y: -hCard * cosL, z: hCard * sinL },
     { x: hw, y: 0, z: 0 },
     { x: -hw, y: 0, z: 0 },
   ];

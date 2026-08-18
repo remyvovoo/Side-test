@@ -4,7 +4,7 @@ export function compressImage(blob: Blob): Promise<Blob> {
     const img = new Image();
     const url = URL.createObjectURL(blob);
     img.onload = () => {
-      const MAX = 1500;
+      const MAX = 2200;
       let w = img.width;
       let h = img.height;
       if (w > MAX || h > MAX) {
@@ -21,7 +21,7 @@ export function compressImage(blob: Blob): Promise<Blob> {
       c.height = h;
       c.getContext("2d")!.drawImage(img, 0, 0, w, h);
       URL.revokeObjectURL(url);
-      c.toBlob((b) => (b ? resolve(b) : reject(new Error("compress"))), "image/jpeg", 0.88);
+      c.toBlob((b) => (b ? resolve(b) : reject(new Error("compress"))), "image/jpeg", 0.9);
     };
     img.onerror = () => {
       URL.revokeObjectURL(url);
@@ -43,6 +43,29 @@ export function loadImage(src: string): Promise<HTMLImageElement> {
 export interface Corner {
   x: number;
   y: number;
+}
+
+/**
+ * Netteté maximale à coût zéro : le détourage renvoyé par remove.bg (souvent
+ * en basse résolution selon le plan) ne sert que de POCHOIR. Les couleurs et
+ * les détails viennent de la photo d'origine en haute résolution — seule la
+ * découpe (le canal alpha, qui s'agrandit très bien) vient du service.
+ */
+export function applyCutoutMask(base: HTMLImageElement, cutout: HTMLImageElement): Promise<HTMLImageElement> {
+  const W = base.naturalWidth || base.width;
+  const H = base.naturalHeight || base.height;
+  const c = document.createElement("canvas");
+  c.width = W;
+  c.height = H;
+  const ctx = c.getContext("2d")!;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  // La découpe agrandie pose la silhouette…
+  ctx.drawImage(cutout, 0, 0, W, H);
+  // …et la photo d'origine vient remplir cette silhouette de ses vrais pixels.
+  ctx.globalCompositeOperation = "source-in";
+  ctx.drawImage(base, 0, 0, W, H);
+  return loadImage(c.toDataURL("image/png"));
 }
 
 /**

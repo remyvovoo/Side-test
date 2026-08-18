@@ -18,6 +18,8 @@ export function renderShot(canvas: HTMLCanvasElement, request: RenderRequest): v
   canvas.height = H;
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
 
   const { theme, mount, shot } = request;
   drawBg(ctx, W, H, theme, request.halo);

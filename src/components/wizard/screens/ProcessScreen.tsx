@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { compressImage, loadImage, autoDetectBounds, autoStraighten, cropToVisible } from "@/lib/wizard/image-utils";
+import {
+  compressImage,
+  loadImage,
+  autoDetectBounds,
+  autoStraighten,
+  cropToVisible,
+  applyCutoutMask,
+} from "@/lib/wizard/image-utils";
 import { removeBackground, RemoveBackgroundError } from "@/lib/wizard/remove-background";
 import { computeSharpnessScore, computeResolutionScore } from "@/lib/quality/analyze-photo";
 import { computeFramingScore } from "@/lib/quality/analyze-framing";
@@ -44,8 +51,14 @@ export function ProcessScreen({ sourceBlob, onComplete, onRetake }: ProcessScree
         const cutoutBlob = await removeBackground(compressed);
         const cutoutImage = await loadImage(URL.createObjectURL(cutoutBlob));
 
+        // Netteté maximale : le détourage (parfois renvoyé en basse résolution)
+        // sert de pochoir appliqué sur la photo haute résolution.
+        setMessage("Restauration de la netteté…");
+        const baseImage = await loadImage(URL.createObjectURL(compressed));
+        const hdCutout = await applyCutoutMask(baseImage, cutoutImage);
+
         setMessage("Redressement de la carte…");
-        const straightened = await autoStraighten(cutoutImage);
+        const straightened = await autoStraighten(hdCutout);
 
         setMessage("Vérification du cadrage…");
         // Le cadrage est mesuré AVANT recentrage : il évalue la photo d'origine.

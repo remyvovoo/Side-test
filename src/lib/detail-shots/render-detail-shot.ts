@@ -50,6 +50,8 @@ export function renderDetailShot(
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext("2d")!;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(0, 0, size, size);
   ctx.drawImage(source, sx, sy, sw, sh, padX, padY, outW, outH);

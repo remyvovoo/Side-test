@@ -62,6 +62,20 @@ export function applyCutoutMask(base: HTMLImageElement, cutout: HTMLImageElement
   ctx.imageSmoothingQuality = "high";
   // La découpe agrandie pose la silhouette…
   ctx.drawImage(cutout, 0, 0, W, H);
+  // …érodée de ~2 px (intersection de 4 copies décalées) : la frontière d'un
+  // masque agrandi déborde facilement de quelques pixels à l'extérieur de la
+  // carte, et ces pixels-là appartiennent au fond de la photo d'origine —
+  // c'est la frange sale visible le long des bords. On la rentre dans la carte.
+  const r = Math.max(1.5, W / 1100);
+  ctx.globalCompositeOperation = "destination-in";
+  for (const [dx, dy] of [
+    [r, 0],
+    [-r, 0],
+    [0, r],
+    [0, -r],
+  ]) {
+    ctx.drawImage(cutout, dx, dy, W, H);
+  }
   // …et la photo d'origine vient remplir cette silhouette de ses vrais pixels.
   ctx.globalCompositeOperation = "source-in";
   ctx.drawImage(base, 0, 0, W, H);

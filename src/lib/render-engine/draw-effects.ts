@@ -108,15 +108,8 @@ export function drawGroundShadow(ctx: CanvasRenderingContext2D, corners: Point2D
   ctx.restore();
 }
 
-/**
- * Traitement « photo » appliqué à l'image finale ENTIÈRE (carte comprise) :
- * grain, vignettage et voile colorimétrique de l'univers. C'est ce traitement
- * commun qui soude l'objet et le décor en une seule et même photo.
- */
-export function applyPhotoGrade(ctx: CanvasRenderingContext2D, W: number, H: number, spot: string) {
-  ctx.fillStyle = `rgba(${spot},0.04)`;
-  ctx.fillRect(0, 0, W, H);
-
+/** Grain photographique seul : soude carte et décor sous un même bruit. */
+export function applyGrain(ctx: CanvasRenderingContext2D, W: number, H: number) {
   const g = ctx.getImageData(0, 0, W, H);
   const d = g.data;
   for (let k = 0; k < d.length; k += 4) {
@@ -126,6 +119,20 @@ export function applyPhotoGrade(ctx: CanvasRenderingContext2D, W: number, H: num
     d[k + 2] += n;
   }
   ctx.putImageData(g, 0, 0);
+}
+
+/**
+ * Traitement « photo » appliqué à l'image finale ENTIÈRE (carte comprise) :
+ * grain, vignettage et voile colorimétrique de l'univers. C'est ce traitement
+ * commun qui soude l'objet et le décor en une seule et même photo.
+ * (Décors dessinés uniquement — une plaque photo a déjà son vignettage et sa
+ * dominante propres : elle ne reçoit que le grain, via applyGrain.)
+ */
+export function applyPhotoGrade(ctx: CanvasRenderingContext2D, W: number, H: number, spot: string) {
+  ctx.fillStyle = `rgba(${spot},0.04)`;
+  ctx.fillRect(0, 0, W, H);
+
+  applyGrain(ctx, W, H);
 
   const vg = ctx.createRadialGradient(W / 2, H * 0.44, W * 0.18, W / 2, H * 0.5, W * 0.72);
   vg.addColorStop(0, "rgba(0,0,0,0)");

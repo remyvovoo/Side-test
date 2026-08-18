@@ -2,9 +2,64 @@ import { makeCam, cardCorners } from "./geometry";
 import { drawBg } from "./draw-background";
 import { drawPlatform } from "./draw-platform";
 import { drawStandBase, drawCase } from "./draw-stand";
-import { drawGroundShadow, drawReflection, drawPerspective, drawCardEdge, applyPhotoGrade } from "./draw-effects";
+import {
+  drawGroundShadow,
+  drawReflection,
+  drawPerspective,
+  drawCardEdge,
+  applyPhotoGrade,
+  applyGrain,
+} from "./draw-effects";
 import { drawLogoBadge, drawInfoTag } from "./draw-overlays";
 import type { RenderRequest } from "./types";
+
+// ---- Plaques photographiques -------------------------------------------------
+// Une plaque est une vraie photo de scène vide servant de décor. renderShot est
+// synchrone : si la plaque n'est pas encore chargée, on dessine le décor de
+// repli (dégradés) et on se souvient du canvas — au chargement, chaque canvas
+// concerné est redessiné avec sa DERNIÈRE requête (jamais une requête périmée).
+const plateCache = new Map<string, HTMLImageElement | "loading" | "error">();
+const pendingCanvases = new Map<string, Set<HTMLCanvasElement>>();
+const lastRequest = new WeakMap<HTMLCanvasElement, RenderRequest>();
+
+function getPlate(url: string, canvas: HTMLCanvasElement): HTMLImageElement | null {
+  const cached = plateCache.get(url);
+  if (cached instanceof HTMLImageElement) return cached;
+  if (cached === "error") return null;
+  let waiting = pendingCanvases.get(url);
+  if (!waiting) {
+    waiting = new Set();
+    pendingCanvases.set(url, waiting);
+  }
+  waiting.add(canvas);
+  if (cached === undefined) {
+    plateCache.set(url, "loading");
+    const img = new Image();
+    img.onload = () => {
+      plateCache.set(url, img);
+      const toRedraw = pendingCanvases.get(url);
+      pendingCanvases.delete(url);
+      toRedraw?.forEach((c) => {
+        const req = lastRequest.get(c);
+        // Ne redessine que si ce canvas attend toujours cette plaque.
+        if (req && req.theme.plate === url) renderShot(c, req);
+      });
+    };
+    img.onerror = () => plateCache.set(url, "error");
+    img.src = url;
+  }
+  return null;
+}
+
+/** Dessine la plaque en « cover » : remplit le canvas, rognée au centre. */
+function drawPlateCover(ctx: CanvasRenderingContext2D, plate: HTMLImageElement, W: number, H: number) {
+  const iw = plate.naturalWidth;
+  const ih = plate.naturalHeight;
+  const s = Math.max(W / iw, H / ih);
+  const dw = iw * s;
+  const dh = ih * s;
+  ctx.drawImage(plate, (W - dw) / 2, (H - dh) / 2, dw, dh);
+}
 
 /**
  * The Canvas render engine: draws one shot (one card, one angle, one studio)
@@ -12,6 +67,7 @@ import type { RenderRequest } from "./types";
  * everything above is an implementation detail of "how", not "what".
  */
 export function renderShot(canvas: HTMLCanvasElement, request: RenderRequest): void {
+  lastRequest.set(canvas, request);
   const W = request.size || 1000;
   const H = W;
   canvas.width = W;
@@ -22,7 +78,11 @@ export function renderShot(canvas: HTMLCanvasElement, request: RenderRequest): v
   ctx.imageSmoothingQuality = "high";
 
   const { theme, mount, shot } = request;
-  drawBg(ctx, W, H, theme, request.halo);
+  // Plaque photographique si l'univers en a une (et qu'elle est chargée) ;
+  // sinon décor dessiné — aussi utilisé en repli le temps du chargement.
+  const plate = theme.plate ? getPlate(theme.plate, canvas) : null;
+  if (plate) drawPlateCover(ctx, plate, W, H);
+  else drawBg(ctx, W, H, theme, request.halo);
 
   const img = shot.face === "verso" ? request.versoImage : request.rectoImage;
   if (!img) return;
@@ -49,23 +109,33 @@ export function renderShot(canvas: HTMLCanvasElement, request: RenderRequest): v
   const cardThickness = hCard * 0.03;
   const qBack = ang !== 0 ? cardCorners(cam, wCard, hCard, ang, liftY, cardThickness) : null;
 
-  // Podium de présentation : dessiné avant l'objet, il pose la scène.
-  drawPlatform(ctx, cam, wCard, liftY, theme, request.halo);
+  // Sur une plaque, la scène (podium, éclairage) est déjà DANS la photo :
+  // on ne dessine ni podium, ni halo, ni socle — et on décale verticalement
+  // la carte (avec son ombre et son reflet) pour poser son bas sur la ligne
+  // de pose de la plaque.
+  const plateDy = plate ? (theme.plateGround ?? 0.78) * H - Math.max(q[2].y, q[3].y) : 0;
 
-  const cx = (q[0].x + q[1].x + q[2].x + q[3].x) / 4;
-  const cy = (q[0].y + q[1].y + q[2].y + q[3].y) / 4;
-  const wpx = Math.abs(q[1].x - q[0].x);
-  const rl = ctx.createRadialGradient(cx, cy, wpx * 0.4, cx, cy, wpx * 1.15);
-  rl.addColorStop(0, `rgba(${theme.spot},${request.halo * 0.18})`);
-  rl.addColorStop(1, `rgba(${theme.spot},0)`);
-  ctx.fillStyle = rl;
-  ctx.beginPath();
-  ctx.ellipse(cx, cy, wpx * 1.0, wpx * 1.35, 0, 0, 7);
-  ctx.fill();
+  if (!plate) {
+    // Podium de présentation : dessiné avant l'objet, il pose la scène.
+    drawPlatform(ctx, cam, wCard, liftY, theme, request.halo);
 
+    const cx = (q[0].x + q[1].x + q[2].x + q[3].x) / 4;
+    const cy = (q[0].y + q[1].y + q[2].y + q[3].y) / 4;
+    const wpx = Math.abs(q[1].x - q[0].x);
+    const rl = ctx.createRadialGradient(cx, cy, wpx * 0.4, cx, cy, wpx * 1.15);
+    rl.addColorStop(0, `rgba(${theme.spot},${request.halo * 0.18})`);
+    rl.addColorStop(1, `rgba(${theme.spot},0)`);
+    ctx.fillStyle = rl;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, wpx * 1.0, wpx * 1.35, 0, 0, 7);
+    ctx.fill();
+  }
+
+  ctx.save();
+  ctx.translate(0, plateDy);
   drawGroundShadow(ctx, q);
   drawReflection(ctx, cam, img, wCard, hCard, ang, liftY, request.reflect);
-  drawStandBase(ctx, cam, mount.id === "case" ? wCard * 1.06 : wCard, liftY);
+  if (!plate) drawStandBase(ctx, cam, mount.id === "case" ? wCard * 1.06 : wCard, liftY);
 
   // --- Calque carte hors écran : la silhouette réelle de la carte détourée
   // (coins arrondis compris) sert pour l'ombre ET reçoit la lumière — plus
@@ -153,10 +223,13 @@ export function renderShot(canvas: HTMLCanvasElement, request: RenderRequest): v
   ctx.drawImage(cardLayer, 0, 0);
 
   if (mount.id === "case") drawCase(ctx, q, wCard);
+  ctx.restore(); // fin du décalage « ligne de pose » (plaque)
 
-  // Traitement photo final commun (grain, vignettage, voile) : carte + décor
-  // reçoivent la même « pellicule » — c'est ce qui soude l'ensemble.
-  applyPhotoGrade(ctx, W, H, theme.spot);
+  // Traitement photo final commun : carte + décor reçoivent la même
+  // « pellicule » — c'est ce qui soude l'ensemble. Une plaque photo a déjà
+  // son vignettage et sa dominante : elle ne reçoit que le grain.
+  if (plate) applyGrain(ctx, W, H);
+  else applyPhotoGrade(ctx, W, H, theme.spot);
 
   drawInfoTag(ctx, W, H, request.cardInfo);
   drawLogoBadge(ctx, W, H, request.logoImage, request.logoText);

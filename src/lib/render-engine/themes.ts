@@ -6,6 +6,23 @@ import type { StudioTheme } from "./types";
  * artist, so this list is the seed of the future "Studio" asset table.
  */
 export const THEMES: StudioTheme[] = [
+  // ESSAI (18 août 2026, non validé par Remy) : premier univers sur photographie
+  // réelle — scène vide tirée de sa référence « support acrylique sur fond noir ».
+  // ⚠️ La plaque actuelle vient d'une photo de marchand retouchée : bonne pour
+  // JUGER l'approche en local, interdite en production (droits). À remplacer par
+  // une photo à nous avant tout déploiement.
+  {
+    id: "studio-noir-photo",
+    name: "Studio Photo",
+    wallTop: "#0a0a0c",
+    wallMid: "#131316",
+    horizon: "#2a2a2e",
+    floor: "#050506",
+    spot: "215,220,235",
+    fx: null,
+    plate: "/studio-plates/noir-acrylique.jpg",
+    plateGround: 0.79,
+  },
   { id: "studio-noir", name: "Studio Noir", wallTop: "#08080d", wallMid: "#12121c", horizon: "#1e1e2a", floor: "#040407", spot: "205,215,240", fx: null },
   { id: "brasier-eternel", name: "Brasier Éternel", wallTop: "#160402", wallMid: "#4e1400", horizon: "#a03c0c", floor: "#0e0301", spot: "255,150,70", fx: "embers" },
   { id: "abysses-profondes", name: "Abysses Profondes", wallTop: "#01080f", wallMid: "#062244", horizon: "#0f5490", floor: "#010a14", spot: "110,200,255", fx: null },

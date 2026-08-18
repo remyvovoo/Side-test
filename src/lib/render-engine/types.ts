@@ -16,6 +16,16 @@ export interface StudioTheme {
   /** "r,g,b" spotlight color, used inside rgba() */
   spot: string;
   fx: "stars" | "embers" | "rays" | null;
+  /**
+   * « Plaque » : URL d'une VRAIE photographie de scène vide utilisée comme
+   * décor à la place des dégradés dessinés. C'est le levier réalisme n°1 :
+   * une photo sur une photo, plutôt qu'une photo sur un dessin. Les couleurs
+   * ci-dessus restent utilisées par les vignettes de choix d'univers et comme
+   * décor de repli pendant le chargement de la plaque.
+   */
+  plate?: string;
+  /** Ligne de pose (0..1 de la hauteur) : où repose le bas de la carte sur la plaque. */
+  plateGround?: number;
 }
 
 export type MountId = "stand" | "case";

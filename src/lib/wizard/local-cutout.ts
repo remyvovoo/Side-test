@@ -220,15 +220,34 @@ function buildMask(img: HTMLImageElement, thresholdScale: number): MaskResult | 
   };
 }
 
-/** Applique le masque (avec un léger adoucissement de bord) à la photo pleine résolution. */
+/**
+ * Érosion d'un pixel : un pixel ne survit que si ses 4 voisins sont dans le
+ * masque. La frontière du masque (calculée en basse résolution puis agrandie)
+ * peut déborder de quelques pixels À L'EXTÉRIEUR de la carte — et ces pixels
+ * sont du fond de la photo d'origine, d'où une frange sale le long des bords.
+ * En rétrécissant le masque d'un cran, le bord tombe toujours DANS la carte.
+ */
+function erode(mask: Uint8Array, w: number, h: number): Uint8Array {
+  const out = new Uint8Array(w * h);
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = y * w + x;
+      if (mask[i] && mask[i - 1] && mask[i + 1] && mask[i - w] && mask[i + w]) out[i] = 1;
+    }
+  }
+  return out;
+}
+
+/** Applique le masque (érodé + léger adoucissement de bord) à la photo pleine résolution. */
 function applyMask(img: HTMLImageElement, m: MaskResult): Promise<HTMLImageElement> {
+  const eroded = erode(m.mask, m.w, m.h);
   const maskCanvas = document.createElement("canvas");
   maskCanvas.width = m.w;
   maskCanvas.height = m.h;
   const mctx = maskCanvas.getContext("2d")!;
   const mi = mctx.createImageData(m.w, m.h);
   for (let i = 0; i < m.w * m.h; i++) {
-    mi.data[i * 4 + 3] = m.mask[i] ? 255 : 0;
+    mi.data[i * 4 + 3] = eroded[i] ? 255 : 0;
   }
   mctx.putImageData(mi, 0, 0);
 

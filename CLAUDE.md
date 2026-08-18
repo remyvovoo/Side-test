@@ -24,23 +24,46 @@ Remy (dossantos.remy@vovoo.fr) est le fondateur, **non-développeur**. Il agit c
 
 ## Où on en est (mettre à jour cette section à chaque étape majeure)
 
+*Dernière mise à jour : 18 août 2026.* Le cahier des charges validé est dans `CAHIER-DES-CHARGES.md` — c'est la référence de périmètre.
+
 **Fait :**
 - Socle Next.js 16 + TypeScript + Tailwind v4 (remplace un ancien prototype HTML statique conservé dans `legacy-prototype/` pour référence).
 - Parcours complet en 8 écrans (`src/components/wizard/`) : accueil → import → score qualité réel → recadrage → verso → studio (présentoir/thème/logo/infos) → export.
 - Moteur de rendu Canvas découplé de l'UI (`src/lib/render-engine/`), derrière une interface `RenderEngine` — c'est la couture prévue pour brancher Blender plus tard sans toucher aux écrans.
-- Score qualité réel (netteté, résolution, cadrage) — `src/lib/quality/`.
+- Score qualité réel (netteté, résolution, cadrage) — `src/lib/quality/`. Le score est **mis en cache par empreinte SHA-256 de la photo** (`quality-cache.ts`) : deux imports de la même photo donnent forcément le même pourcentage.
 - Photos de détail réelles (coins + surface, non stylisées) — `src/lib/detail-shots/`.
-- Profil vendeur + description auto-générée — `src/lib/wizard/seller-profile.ts`, `generate-description.ts`.
 - Export ZIP unique (visuels + détails + description + miniature) — `src/lib/wizard/export-zip.ts`.
-- Comptes utilisateurs (inscription/connexion/déconnexion), panneau admin listant les inscriptions, base Postgres (Neon) + Prisma, Auth.js (NextAuth v5) — `src/auth.ts`, `src/app/(login|register|admin)`, `prisma/`.
-- Infrastructure FR/EN (`src/lib/i18n/`) — **appliquée uniquement aux écrans de connexion/inscription/admin**.
+- **Authentification complète** : inscription, connexion, mot de passe oublié par e-mail (Mailjet en appel REST direct, sans dépendance npm — `src/lib/email/`). En l'absence de clés Mailjet, les e-mails partent dans la console (mode dev). La réponse « mot de passe oublié » est volontairement **neutre**, qu'un compte existe ou non (décision de Remy après discussion : ne pas révéler qu'une adresse est inscrite).
+- **Onboarding 3 étapes** façon CarBox (`OnboardingFlow.tsx`) : Inscription → Univers → Volume → « Compte prêt ».
+- **Espace connecté SaaS** (`src/components/dashboard/`) : sidebar sur ordinateur, menu hamburger sur mobile. Vue d'ensemble · Mes cartes · Mon studio · Mon profil vendeur, + bouton primaire séparé « Nouvelle carte ».
+- **Cartes persistées en base** (modèle `Card`) : la carte est enregistrée dès l'arrivée sur l'écran d'export, pas au téléchargement. Grille cliquable, page de détail éditable, corbeille au survol, sélection multiple.
+- **Annonce générée par modèles** (`generate-description.ts`) : l'utilisateur définit ses gabarits de titre et de description avec des variables (`{nom}`, `{série}`, `{état}`, `{numéro}`…). Les lignes dont toutes les variables sont vides disparaissent automatiquement.
+- **Réglages studio par défaut** (`/dashboard/studio`) : le wizard démarre pré-configuré, « Ajuster » reste optionnel. L'UI est **scindée en deux** — ce qui concerne l'annonce d'un côté, le visuel/studio de l'autre (demande explicite de Remy).
+- **Détourage maison** (`src/lib/wizard/local-cutout.ts`) : seuillage d'Otsu sur une distance colorimétrique insensible aux ombres, plus grande composante connexe, rebouchage des trous, contrôle de plausibilité (portrait, ratio ~1,4, rectangle plein). Gratuit, instantané, zéro dépendance. **remove.bg n'est plus qu'une roue de secours.**
+
+**Décisions produit actées (ne pas les rouvrir sans que Remy le demande) :**
+- **Pas de boîtier acrylique factice** dans le rendu : cela laisserait croire à l'acheteur que la carte est protégée et masquerait ses défauts.
+- **Le prix ne doit jamais apparaître sur les photos.**
+- **Un seul fond à la fois** — on travaille un univers jusqu'au bout avant d'en ajouter un autre.
+- Le rendu studio est un chantier **itératif** : Remy juge sur pièce à chaque passe.
 
 **Pas fait / en attente — ne pas supposer que c'est fait :**
-- Le parcours principal (les 8 écrans du wizard) est **encore 100 % en français codé en dur**, pas branché sur `src/lib/i18n/`. C'est le prochain gros chantier mécanique si on veut un site bilingue complet.
+- **Identification des informations de la carte par IA** (numéro, nom, série) pour pré-remplir l'annonce : **prochain chantier**, autorisé par Remy. Nécessite `ANTHROPIC_API_KEY` dans `.env.local` + Vercel. Charger le skill `claude-api` avant d'écrire la moindre ligne. Prévoir un plafond d'essai (~30 analyses).
+- Le parcours principal (les 8 écrans du wizard) est **encore 100 % en français codé en dur**, pas branché sur `src/lib/i18n/`.
 - Correction de perspective (redressement d'une photo prise de travers) — le recadrage ne fait qu'un rectangle englobant, pas une déformation en quadrilatère. Explicitement mis de côté par choix (complexité/risque), pas oublié.
-- Export marketplace (eBay, Cardmarket, Shopify, Leboncoin, WooCommerce), dashboard, statistiques, traitement par lot, système d'Assets en base (studios/présentoirs actuellement des tableaux JS codés en dur, pas des données).
-- Paiement / abonnement / crédits : **explicitement refusé par Remy pour l'instant** ("on fera ça plus tard si besoin"). Ne pas construire sans qu'il le redemande.
+- Univers « Bureau » (décor sobre, choix de couleur de fond) et « Atelier bois » : validés, pas commencés.
+- Visite guidée du produit : validée, mais **à faire tout à la fin**, quand tout le reste est stabilisé.
+- Traitement par lot (plusieurs annonces d'un coup) : à faire **après** l'identification IA.
+- Stockage des images sur Vercel Blob + re-téléchargement depuis « Mes cartes ».
+- Export marketplace (eBay, Vinted, Cardmarket…), statistiques, système d'Assets en base (studios/présentoirs actuellement des tableaux JS codés en dur).
+- Paiement / abonnement / crédits : **explicitement refusé par Remy pour l'instant**. Ne pas construire sans qu'il le redemande.
 - Aucun test automatisé (unitaire ou e2e) n'existe encore.
+
+**Rituels de vérification (gagnent du temps, appliqués systématiquement) :**
+- Après `npx prisma migrate dev`, **redémarrer le serveur de dev** — sinon erreurs `PrismaClientValidationError` sur les nouveaux champs.
+- Si le serveur sert des fichiers périmés : `preview_stop` → `rm -rf .next` → `preview_start`. (Cause probable : horloge du Mac décalée par rapport aux dates du cache.)
+- **Avant de supprimer un compte de test, déconnecter la session du navigateur** — sinon Remy garde une session pointant vers un compte inexistant, et ses cartes semblent disparaître.
+- React monte les effets deux fois en dev : tout traitement coûteux (détourage, appel API payant) doit être **dédupliqué par promesse partagée**, jamais par un simple garde booléen — un garde fait sortir le montage survivant sans jamais appeler `onComplete` (interblocage déjà rencontré).
 
 ## Sécurité — point de vigilance actif
 

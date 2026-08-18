@@ -99,11 +99,26 @@ export function CustomizeScreen({
     img.src = URL.createObjectURL(file);
   }
 
+  /** Un champ ne « respire » que si l'IA tourne et qu'il n'a pas déjà de valeur. */
+  function aiTargetClass(value: string): string | undefined {
+    return aiStatus === "running" && !value.trim() ? "cs-ai-target" : undefined;
+  }
+
   return (
     <div className="screen" id="screen-customize">
       <div className="custo-layout">
         <div className="custo-preview">
-          <canvas id="mainCanvas" ref={mainCanvasRef} />
+          <div className="cs-canvas-wrap">
+            <canvas id="mainCanvas" ref={mainCanvasRef} />
+            {aiStatus === "running" && (
+              <div className="cs-ai-scan" aria-hidden="true">
+                <div className="cs-ai-scan-line" />
+                <span className="cs-ai-scan-label">
+                  <i className="ti ti-sparkles" /> Identification de la carte…
+                </span>
+              </div>
+            )}
+          </div>
           <div className="angle-nav">
             <button className="angle-btn" onClick={() => cycleShot(-1)} aria-label="Angle précédent" type="button">
               <i className="ti ti-chevron-left" />
@@ -179,12 +194,14 @@ export function CustomizeScreen({
               <div className="field-grid" style={{ marginBottom: 8 }}>
                 <input
                   type="text"
+                  className={aiTargetClass(cardInfo.name)}
                   placeholder="Nom (ex : Dracaufeu ex)"
                   value={cardInfo.name}
                   onChange={(e) => onCardInfoChange({ ...cardInfo, name: e.target.value })}
                 />
                 <input
                   type="text"
+                  className={aiTargetClass(cardInfo.number)}
                   placeholder="N° (ex : 228/197)"
                   value={cardInfo.number}
                   onChange={(e) => onCardInfoChange({ ...cardInfo, number: e.target.value })}
@@ -198,6 +215,7 @@ export function CustomizeScreen({
                   onChange={(e) => onCardInfoChange({ ...cardInfo, price: e.target.value })}
                 />
                 <select
+                  className={aiTargetClass(cardInfo.rarity)}
                   value={cardInfo.rarity}
                   onChange={(e) => onCardInfoChange({ ...cardInfo, rarity: e.target.value })}
                 >
@@ -214,12 +232,14 @@ export function CustomizeScreen({
               <div className="field-grid" style={{ marginTop: 8 }}>
                 <input
                   type="text"
+                  className={aiTargetClass(cardInfo.series)}
                   placeholder="Série (ex : Évolutions Prismatiques)"
                   value={cardInfo.series}
                   onChange={(e) => onCardInfoChange({ ...cardInfo, series: e.target.value })}
                 />
                 <input
                   type="text"
+                  className={aiTargetClass(cardInfo.language)}
                   placeholder="Langue (ex : Français)"
                   value={cardInfo.language}
                   onChange={(e) => onCardInfoChange({ ...cardInfo, language: e.target.value })}

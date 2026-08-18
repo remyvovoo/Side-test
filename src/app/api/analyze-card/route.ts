@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
+import type { Locale } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/db/prisma";
 import { CARD_RARITIES } from "@/lib/wizard/types";
+import { lookupCardOnTcgdex } from "@/lib/wizard/tcgdex-lookup";
 
 // Prisma tourne en Node, pas en Edge.
 export const runtime = "nodejs";
@@ -30,52 +32,71 @@ const BodySchema = z.object({
 });
 
 /**
+ * Langue de rédaction de l'annonce, pilotée par User.locale (déjà en base,
+ * pas encore branché ailleurs dans le produit — voir CLAUDE.md). Détermine à
+ * la fois la langue du nom relevé par l'IA et le jeu de données TCGdex
+ * interrogé pour l'extension/la rareté. La LANGUE D'IMPRESSION de la carte
+ * physique (champ `language` ci-dessous) est indépendante : une carte
+ * imprimée en anglais dans une annonce en français donne toujours le nom
+ * français (« Dracaufeu »), jamais l'anglais (« Charizard »).
+ */
+const LOCALE_TARGET: Record<Locale, { tcgdexLang: string; label: string }> = {
+  fr: { tcgdexLang: "fr", label: "français" },
+  en: { tcgdexLang: "en", label: "anglais" },
+};
+
+/**
  * Champs renvoyés par le modèle. Tout est obligatoire dans le schéma (sortie
  * structurée), mais une chaîne vide signifie « je ne sais pas » — c'est la
  * réponse attendue quand l'information n'est pas lisible sur la photo.
  */
-const CARD_FACTS_SCHEMA = {
-  type: "object",
-  properties: {
-    name: {
-      type: "string",
-      description:
-        "Nom du personnage ou de la carte, tel qu'imprimé en haut de la carte (ex : « Dracaufeu ex »). Chaîne vide si illisible.",
+function buildFactsSchema(targetLabel: string) {
+  return {
+    type: "object",
+    properties: {
+      name: {
+        type: "string",
+        description:
+          `Nom du personnage ou de la carte, TOUJOURS en ${targetLabel} — même si la carte est imprimée dans une autre langue (ex : une carte imprimée « Charizard » en anglais donne le nom français « Dracaufeu » si la cible est le français). Traduis uniquement si tu reconnais le personnage/la carte avec certitude ; chaîne vide plutôt qu'une traduction incertaine.`,
+      },
+      number: {
+        type: "string",
+        description:
+          "Numéro de collection imprimé, généralement en bas à gauche ou en bas à droite, au format « 228/197 » ou « SV107 ». Chaîne vide si illisible.",
+      },
+      series: {
+        type: "string",
+        description:
+          `Nom de l'extension / du bloc, UNIQUEMENT s'il est littéralement imprimé sur la carte dans la langue cible (${targetLabel}). Ne traduis jamais un nom d'extension de mémoire — laisse vide, une recherche dédiée s'en charge séparément.`,
+      },
+      language: {
+        type: "string",
+        description:
+          "Langue d'IMPRESSION réelle de la carte physique (indépendante de la langue de l'annonce) : « Français », « Anglais », « Japonais », « Chinois », « Allemand », « Coréen »… Chaîne vide si indéterminable. N'influence jamais les autres champs.",
+      },
+      rarity: {
+        type: "string",
+        enum: ["", ...CARD_RARITIES],
+        description:
+          "Rareté déduite du symbole imprimé à côté du numéro. Chaîne vide en cas de doute.",
+      },
     },
-    number: {
-      type: "string",
-      description:
-        "Numéro de collection imprimé, généralement en bas à gauche ou en bas à droite, au format « 228/197 » ou « SV107 ». Chaîne vide si illisible.",
-    },
-    series: {
-      type: "string",
-      description:
-        "Nom de l'extension / du bloc si visible sur la carte (ex : « Évolutions Prismatiques »). Chaîne vide si absent ou incertain.",
-    },
-    language: {
-      type: "string",
-      description:
-        "Langue d'impression de la carte, en français : « Français », « Anglais », « Japonais », « Allemand »… Chaîne vide si indéterminable.",
-    },
-    rarity: {
-      type: "string",
-      enum: ["", ...CARD_RARITIES],
-      description:
-        "Rareté déduite du symbole imprimé à côté du numéro. Chaîne vide en cas de doute.",
-    },
-  },
-  required: ["name", "number", "series", "language", "rarity"],
-  additionalProperties: false,
-} as const;
+    required: ["name", "number", "series", "language", "rarity"],
+    additionalProperties: false,
+  } as const;
+}
 
-const SYSTEM_PROMPT = `Tu identifies les informations imprimées sur une photo de carte à collectionner (Pokémon, Yu-Gi-Oh!, Magic, sport…), pour préremplir une annonce de vente.
+function buildSystemPrompt(targetLabel: string) {
+  return `Tu identifies les informations imprimées sur une photo de carte à collectionner (Pokémon, Yu-Gi-Oh!, Magic, sport…), pour préremplir une annonce de vente rédigée en ${targetLabel}.
 
 Règles absolues :
-- Tu ne rapportes QUE ce qui est réellement lisible sur la photo. Tu ne complètes jamais de mémoire : si tu reconnais la carte mais que le texte n'est pas lisible, laisse le champ vide.
+- Le numéro et la langue d'impression sont une transcription pure : tu ne rapportes que ce qui est réellement lisible sur la photo, jamais de mémoire.
+- Le nom du personnage/de la carte fait exception : il est toujours donné en ${targetLabel}, quelle que soit la langue d'impression de la carte (traduction vers un nom officiel bien connu, jamais une invention — si tu n'es pas sûr de reconnaître la carte, laisse le champ vide).
+- La série n'est remplie que si elle est littéralement imprimée sur la carte dans la langue cible ; ne la traduis jamais toi-même.
 - Dans le doute, la chaîne vide est la bonne réponse. Un champ vide sera rempli à la main par le vendeur ; un champ inventé fait une annonce mensongère.
 - Tu ne juges jamais l'état de la carte ni son prix : ce n'est pas ton rôle.
-- Le nom et la série sont recopiés tels qu'imprimés, dans la langue de la carte, en respectant les accents.
 - Le numéro est recopié exactement, séparateur compris (« 228/197 », pas « 228 sur 197 »).`;
+}
 
 interface CardFacts {
   name: string;
@@ -93,49 +114,7 @@ const FactsSchema = z.object({
   rarity: z.string().max(40),
 });
 
-/**
- * Étape 2 — le code imprimé (« 052/196 ») identifie la carte de façon unique
- * dans les bases de vendeurs. On l'utilise pour retrouver en ligne l'extension
- * et la rareté, qui ne sont presque jamais écrites sur la carte elle-même.
- */
-const LOOKUP_SCHEMA = {
-  type: "object",
-  properties: {
-    series: {
-      type: "string",
-      description:
-        "Nom de l'extension (set) à laquelle appartient la carte, dans la langue de la carte. Chaîne vide si les recherches ne permettent pas de conclure.",
-    },
-    rarity: {
-      type: "string",
-      enum: ["", ...CARD_RARITIES],
-      description: "Niveau de rareté correspondant. Chaîne vide en cas de doute.",
-    },
-    source: {
-      type: "string",
-      description: "URL de la page qui a servi de référence. Chaîne vide si aucune.",
-    },
-  },
-  required: ["series", "rarity", "source"],
-  additionalProperties: false,
-} as const;
-
-const LOOKUP_SYSTEM_PROMPT = `Tu complètes la fiche d'une carte à collectionner mise en vente, à partir des informations imprimées relevées sur la photo.
-
-Le code d'identification (ex : « 052/196 ») et le nom suffisent en général à retrouver la carte dans les bases de vendeurs (Cardmarket, boutiques spécialisées, bases de données de cartes). Utilise la recherche web pour identifier l'extension et la rareté.
-
-Règles absolues :
-- Tu ne conclus que si les résultats concordent. Si tu ne trouves pas, ou si les résultats se contredisent, renvoie des chaînes vides : le vendeur complétera à la main.
-- Le nom de l'extension est donné dans la langue de la carte (une carte française → le nom français de l'extension).
-- Tu ne cherches ni le prix ni l'état : ce n'est pas ton rôle.`;
-
-const LookupSchema = z.object({
-  series: z.string().max(120),
-  rarity: z.string().max(40),
-  source: z.string().max(500),
-});
-
-/** Dernier bloc texte exploitable d'une réponse (une réponse outillée en contient plusieurs). */
+/** Dernier bloc texte exploitable d'une réponse. */
 function readJsonBlocks<T>(
   blocks: Anthropic.ContentBlock[],
   schema: z.ZodType<T>
@@ -147,63 +126,6 @@ function readJsonBlocks<T>(
     } catch {
       // bloc de commentaire du modèle, on regarde le précédent
     }
-  }
-  return null;
-}
-
-/**
- * Cherche en ligne l'extension et la rareté à partir du code imprimé. Renvoie
- * null si la recherche est inutile (pas de code lu, rien à compléter) ou si
- * elle échoue : l'identification de la photo reste acquise dans tous les cas.
- */
-async function lookupFromCode(
-  client: Anthropic,
-  facts: CardFacts
-): Promise<z.infer<typeof LookupSchema> | null> {
-  const needsSeries = !facts.series.trim();
-  const needsRarity = !facts.rarity.trim();
-  if (!facts.number.trim() || (!needsSeries && !needsRarity)) return null;
-
-  const messages: Anthropic.MessageParam[] = [
-    {
-      role: "user",
-      content: `Carte à identifier :
-- nom imprimé : ${facts.name || "non lisible"}
-- code imprimé : ${facts.number}
-- langue : ${facts.language || "non déterminée"}
-
-Trouve l'extension à laquelle elle appartient et son niveau de rareté.`,
-    },
-  ];
-
-  try {
-    // La recherche web enchaîne plusieurs tours : le modèle peut rendre la main
-    // avec « pause_turn », on le relance en lui repassant son propre travail.
-    for (let round = 0; round < 4; round++) {
-      const response = await client.messages.create(
-        {
-          model: MODEL,
-          max_tokens: 4096,
-          system: LOOKUP_SYSTEM_PROMPT,
-          output_config: { effort: "medium", format: { type: "json_schema", schema: LOOKUP_SCHEMA } },
-          tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 5 }],
-          messages,
-        },
-        // Plafond de temps : au-delà, on préfère livrer l'extraction seule.
-        { timeout: 30_000 }
-      );
-      if (response.stop_reason === "refusal") return null;
-      if (response.stop_reason !== "pause_turn") {
-        const lookup = readJsonBlocks(response.content, LookupSchema);
-        if (lookup?.source) {
-          console.info("[cardshot] analyze-card: extension trouvée via", lookup.source);
-        }
-        return lookup;
-      }
-      messages.push({ role: "assistant", content: response.content });
-    }
-  } catch (e) {
-    console.warn("[cardshot] analyze-card: recherche en ligne indisponible", e);
   }
   return null;
 }
@@ -228,7 +150,7 @@ export async function POST(req: NextRequest) {
 
   const user = await prisma.user.findUnique({
     where: { id: session.user.id },
-    select: { aiAnalysisCount: true },
+    select: { aiAnalysisCount: true, locale: true },
   });
   if (!user) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -239,6 +161,7 @@ export async function POST(req: NextRequest) {
       { status: 429 }
     );
   }
+  const target = LOCALE_TARGET[user.locale] ?? LOCALE_TARGET.fr;
 
   const [header, data] = parsed.data.image.split(",", 2);
   const mediaType = header.slice("data:".length, header.indexOf(";")) as
@@ -255,12 +178,12 @@ export async function POST(req: NextRequest) {
     response = await client.messages.create({
       model: MODEL,
       max_tokens: 1024,
-      system: SYSTEM_PROMPT,
+      system: buildSystemPrompt(target.label),
       output_config: {
         // Extraction courte : pas besoin de réflexion approfondie, on privilégie
         // la latence et le coût.
         effort: "low",
-        format: { type: "json_schema", schema: CARD_FACTS_SCHEMA },
+        format: { type: "json_schema", schema: buildFactsSchema(target.label) },
       },
       messages: [
         {
@@ -298,10 +221,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "analysis_failed" }, { status: 502 });
   }
 
-  // Étape 2 : l'extension et la rareté se déduisent du code imprimé. Recherche
-  // best-effort — si elle échoue ou traîne, on renvoie quand même ce que la
-  // photo a donné.
-  const enrichment = await lookupFromCode(client, facts);
+  // Étape 2 : l'extension et la rareté se déduisent du code imprimé, via
+  // TCGdex (base publique, quasi instantané) — best-effort, ne bloque jamais
+  // l'extraction de la photo si elle échoue ou ne trouve rien.
+  const needsLookup = !facts.series.trim() || !facts.rarity.trim();
+  const enrichment = needsLookup
+    ? await lookupCardOnTcgdex(facts, target.tcgdexLang)
+    : null;
   if (enrichment) {
     if (!facts.series.trim()) facts.series = enrichment.series;
     if (!facts.rarity.trim()) facts.rarity = enrichment.rarity;

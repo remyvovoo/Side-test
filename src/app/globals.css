@@ -181,6 +181,13 @@ body {
   .custo-controls { flex: 1; }
 }
 #mainCanvas { width: 100%; border-radius: 14px; display: block; }
+.cs-canvas-wrap { position: relative; border-radius: 14px; overflow: hidden; }
+/* Balayage pendant l'identification IA — même langage visuel que .scan-line (ProcessScreen) */
+.cs-ai-scan { position: absolute; inset: 0; pointer-events: none; }
+.cs-ai-scan-line { position: absolute; left: 0; right: 0; height: 3px; background: linear-gradient(90deg,transparent,var(--accent),transparent); animation: scan 1.8s ease-in-out infinite; box-shadow: 0 0 16px var(--accent); }
+.cs-ai-scan-label { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; background: rgba(11,10,20,.72); backdrop-filter: blur(6px); font-size: 11.5px; font-weight: 500; color: var(--text); border: .5px solid var(--border-strong); white-space: nowrap; animation: cs-ai-label-pulse 1.8s ease-in-out infinite; }
+.cs-ai-scan-label i { color: var(--accent); font-size: 13px; }
+@keyframes cs-ai-label-pulse { 0%, 100% { opacity: .85; } 50% { opacity: 1; } }
 .angle-nav { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 10px; }
 .angle-btn { width: 34px; height: 34px; border-radius: 9px; border: .5px solid var(--border-strong); background: var(--surface); color: var(--text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 15px; }
 .angle-btn:hover { border-color: var(--accent); color: var(--text); }
@@ -341,6 +348,14 @@ input[type=range]::-moz-range-thumb { width: 17px; height: 17px; border-radius: 
 .cs-ai-btn { margin-left: auto; flex: 0 0 auto; border: .5px solid var(--border-strong); background: var(--surface); color: var(--text); font-family: inherit; font-size: 11.5px; font-weight: 500; padding: 5px 10px; border-radius: 8px; cursor: pointer; }
 .cs-ai-btn:hover { border-color: var(--accent); color: var(--accent); }
 .cs-ai-spin { width: 14px; height: 14px; flex: 0 0 auto; border: 2px solid var(--surface); border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+/* Champ pas encore rempli, en attente d'un préremplissage IA en cours */
+.cs-ai-target { animation: cs-ai-field-glow 1.8s ease-in-out infinite; }
+@keyframes cs-ai-field-glow { 0%, 100% { box-shadow: 0 0 0 0 rgba(139,124,248,0); } 50% { box-shadow: 0 0 0 3px rgba(139,124,248,.22); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner, .scan-line, .cs-ai-spin, .cs-ai-scan-line, .cs-ai-scan-label, .cs-ai-target { animation: none; }
+  .cs-ai-scan-label { opacity: 1; }
+}
 
 /* Studio compact (parcours connecté) */
 .cs-hidden { display: none; }

@@ -21,9 +21,18 @@ export interface Pt {
   y: number;
 }
 
-/** Proportions d'une carte standard (88/63) et rayon de coin (~3 mm sur 63). */
+/** Proportions d'une carte standard (63 × 88 mm). */
 const CARD_RATIO = 88 / 63;
-const CORNER_RADIUS_RATIO = 0.048;
+
+/**
+ * Marge de contexte rendue autour du rectangle nominal : c'est dans cette
+ * bande qu'on va lire le VRAI bord de la carte (voir traceSilhouette).
+ */
+const PAD_RATIO = 0.05;
+/** Creux maximal accepté vers l'intérieur : éclat, coin écorné, bord mordu. */
+const MAX_BITE_RATIO = 0.07;
+/** Débord maximal accepté vers l'extérieur : carte gondolée, bord bombé. */
+const MAX_BULGE_RATIO = 0.02;
 
 /** Droite sous forme (a,b,c) avec a·x + b·y = c, (a,b) unitaire. */
 interface Line {
@@ -253,9 +262,15 @@ function homography(quad: Pt[], w: number, h: number): number[] {
 
 /**
  * Redresse la carte : le quadrilatère source devient un rectangle droit aux
- * proportions d'une carte, avec des coins arrondis nets. C'est ici que la
- * correction de perspective se fait (une photo prise de biais redevient une
- * carte droite).
+ * proportions d'une carte. C'est ici que la correction de perspective se fait
+ * (une photo prise de biais redevient une carte droite).
+ *
+ * RÈGLE PRODUIT (Remy, 19 août 2026) : on corrige l'ANGLE DE PRISE DE VUE,
+ * jamais la carte. La silhouette est une donnée d'ÉTAT — coins carrés des
+ * anciennes séries, coins écornés, bords mordus : l'acheteur doit les voir.
+ * On ne découpe donc PAS un rectangle aux coins arrondis idéaux : les droites
+ * ajustées disent seulement OÙ CHERCHER le bord, et le contour final est lu
+ * sur l'image redressée, à pleine résolution (voir traceSilhouette).
  */
 export async function rectifyCard(
   img: HTMLImageElement,
@@ -268,6 +283,12 @@ export async function rectifyCard(
   const outW = Math.round(Math.max(dist(tl, tr), dist(bl, br)));
   const outH = Math.round(outW * CARD_RATIO);
   const H = homography(quad, outW, outH);
+  // On rend un peu PLUS que le rectangle nominal : cette marge de fond est ce
+  // qui permet ensuite de retrouver le vrai bord, y compris s'il déborde
+  // (carte gondolée) ou s'il rentre (éclat).
+  const pad = Math.max(6, Math.round(outW * PAD_RATIO));
+  const PW = outW + pad * 2;
+  const PH = outH + pad * 2;
 
   const srcCanvas = document.createElement("canvas");
   const sw = img.naturalWidth || img.width;
@@ -279,19 +300,24 @@ export async function rectifyCard(
   const srcData = sctx.getImageData(0, 0, sw, sh).data;
 
   const out = document.createElement("canvas");
-  out.width = outW;
-  out.height = outH;
+  out.width = PW;
+  out.height = PH;
   const octx = out.getContext("2d")!;
-  const dstImage = octx.createImageData(outW, outH);
+  const dstImage = octx.createImageData(PW, PH);
   const dst = dstImage.data;
+  // Pixels réellement échantillonnés dans la photo source (le reste est hors
+  // cadre : ni carte, ni fond mesurable).
+  const valid = new Uint8Array(PW * PH);
 
   const [h0, h1, h2, h3, h4, h5, h6, h7] = H;
-  for (let y = 0; y < outH; y++) {
-    for (let x = 0; x < outW; x++) {
+  for (let py = 0; py < PH; py++) {
+    for (let px = 0; px < PW; px++) {
+      const x = px - pad;
+      const y = py - pad;
       const denom = h6 * x + h7 * y + 1;
       const u = (h0 * x + h1 * y + h2) / denom;
       const v = (h3 * x + h4 * y + h5) / denom;
-      const i = (y * outW + x) * 4;
+      const i = (py * PW + px) * 4;
       if (u < 0 || v < 0 || u >= sw - 1 || v >= sh - 1) {
         dst[i + 3] = 0;
         continue;
@@ -311,31 +337,212 @@ export async function rectifyCard(
         dst[i + c] = top * (1 - fy) + bot * fy;
       }
       dst[i + 3] = 255;
+      valid[py * PW + px] = 1;
     }
   }
+
+  // Le contour réel, lu sur l'image redressée à pleine résolution.
+  traceSilhouette(dst, valid, PW, PH, pad);
   octx.putImageData(dstImage, 0, 0);
 
-  // Coins arrondis reconstruits : on découpe un rectangle arrondi parfait
-  // plutôt que d'hériter des coins approximatifs du masque.
-  const radius = outW * CORNER_RADIUS_RATIO;
-  const rounded = document.createElement("canvas");
-  rounded.width = outW;
-  rounded.height = outH;
-  const rctx = rounded.getContext("2d")!;
-  rctx.beginPath();
-  rctx.moveTo(radius, 0);
-  rctx.lineTo(outW - radius, 0);
-  rctx.quadraticCurveTo(outW, 0, outW, radius);
-  rctx.lineTo(outW, outH - radius);
-  rctx.quadraticCurveTo(outW, outH, outW - radius, outH);
-  rctx.lineTo(radius, outH);
-  rctx.quadraticCurveTo(0, outH, 0, outH - radius);
-  rctx.lineTo(0, radius);
-  rctx.quadraticCurveTo(0, 0, radius, 0);
-  rctx.closePath();
-  rctx.fill();
-  rctx.globalCompositeOperation = "source-in";
-  rctx.drawImage(out, 0, 0);
+  return loadImage(cropToAlpha(out).toDataURL("image/png"));
+}
 
-  return loadImage(rounded.toDataURL("image/png"));
+/** Médiane sur une petite fenêtre (tolère les tableaux vides). */
+function median(a: number[]): number {
+  if (!a.length) return 0;
+  const s = [...a].sort((p, q) => p - q);
+  return s[s.length >> 1];
+}
+
+/**
+ * Écart au fond insensible aux ombres : une ombre portée a la même teinte que
+ * le fond, en plus sombre. On mesure surtout la différence de COULEUR, et on
+ * ne compte l'écart de luminosité que s'il est plus CLAIR que le fond.
+ */
+function bgDistance(
+  d: Uint8ClampedArray,
+  i: number,
+  r: number,
+  g: number,
+  b: number
+): number {
+  const dr = d[i] - r;
+  const dg = d[i + 1] - g;
+  const db = d[i + 2] - b;
+  const dl = (dr + dg + db) / 3;
+  const cr = dr - dl;
+  const cg = dg - dl;
+  const cb = db - dl;
+  return Math.sqrt(cr * cr + cg * cg + cb * cb) + Math.max(0, dl) * 0.5;
+}
+
+/** Médiane glissante à 3 : efface le pixel isolé, garde le vrai défaut. */
+function despeckle(border: Float32Array): void {
+  const src = Float32Array.from(border);
+  for (let i = 1; i < border.length - 1; i++) {
+    const a = src[i - 1];
+    const b = src[i];
+    const c = src[i + 1];
+    border[i] = Math.max(Math.min(a, b), Math.min(Math.max(a, b), c));
+  }
+}
+
+/**
+ * Trouve le VRAI bord de la carte et l'écrit dans le canal alpha.
+ *
+ * L'image reçue est déjà redressée : les 4 bords de la carte sont donc des
+ * droites quasi parfaites, situées à `pad` pixels de chaque côté. On balaie
+ * chaque ligne (et chaque colonne) depuis le fond vers l'intérieur et on
+ * s'arrête au premier pixel qui n'est plus le fond. Ce que ça préserve, et
+ * qu'un rectangle arrondi idéal détruisait :
+ *   - les coins CARRÉS des anciennes séries (on ne présume plus de la forme) ;
+ *   - les ÉCLATS et coins écornés, qui font partie de l'état de la carte ;
+ *   - les bords blanchis par l'usure, que la contraction du bord rabotait.
+ *
+ * Les droites ajustées ne servent que de fenêtre de recherche : le bord ne
+ * peut ni rentrer au-delà d'un éclat plausible (MAX_BITE_RATIO), ni déborder
+ * au-delà d'un léger gondolement (MAX_BULGE_RATIO). Hors de cette fenêtre, on
+ * retombe sur la droite — jamais sur du fond.
+ */
+function traceSilhouette(
+  d: Uint8ClampedArray,
+  valid: Uint8Array,
+  PW: number,
+  PH: number,
+  pad: number
+): void {
+  const cardW = PW - pad * 2;
+  const cardH = PH - pad * 2;
+  const bite = Math.round(Math.min(cardW, cardH) * MAX_BITE_RATIO);
+  const bulge = Math.round(Math.min(cardW, cardH) * MAX_BULGE_RATIO);
+
+  // Couleur du fond, mesurée sur la bande extérieure de chaque côté.
+  const strip = Math.max(2, Math.round(pad * 0.5));
+  const sampleBg = (
+    x0: number,
+    x1: number,
+    y0: number,
+    y1: number
+  ): [number, number, number] => {
+    const rs: number[] = [];
+    const gs: number[] = [];
+    const bs: number[] = [];
+    for (let y = y0; y < y1; y += 2) {
+      for (let x = x0; x < x1; x += 2) {
+        const p = y * PW + x;
+        if (!valid[p]) continue;
+        rs.push(d[p * 4]);
+        gs.push(d[p * 4 + 1]);
+        bs.push(d[p * 4 + 2]);
+      }
+    }
+    return [median(rs), median(gs), median(bs)];
+  };
+
+  /**
+   * Balayage d'un côté. `read(line, step)` donne l'index du pixel à `step`
+   * pixels de profondeur sur la ligne `line`. Renvoie la position du bord,
+   * en sous-pixel, dans le repère de profondeur.
+   */
+  const scanSide = (
+    lines: number,
+    bg: [number, number, number],
+    read: (line: number, step: number) => number
+  ): Float32Array => {
+    const depth = pad + bite;
+    const start = Math.max(0, pad - bulge);
+    // Seuil adaptatif : proportionnel au contraste carte/fond réellement
+    // observé, avec un plancher pour ne pas suivre le bruit du capteur.
+    const peaks: number[] = [];
+    for (let line = 0; line < lines; line += 8) {
+      let mx = 0;
+      for (let step = start; step < depth; step++) {
+        const p = read(line, step);
+        if (!valid[p]) continue;
+        const v = bgDistance(d, p * 4, bg[0], bg[1], bg[2]);
+        if (v > mx) mx = v;
+      }
+      peaks.push(mx);
+    }
+    const threshold = Math.max(18, median(peaks) * 0.4);
+
+    const border = new Float32Array(lines);
+    for (let line = 0; line < lines; line++) {
+      let found = -1;
+      let prev = 0;
+      for (let step = start; step < depth; step++) {
+        const p = read(line, step);
+        const v = valid[p] ? bgDistance(d, p * 4, bg[0], bg[1], bg[2]) : 0;
+        if (v > threshold) {
+          // Deux pixels d'affilée : un pixel isolé est du bruit, pas un bord.
+          const q = read(line, Math.min(depth - 1, step + 1));
+          const v2 = valid[q] ? bgDistance(d, q * 4, bg[0], bg[1], bg[2]) : 0;
+          if (v2 > threshold) {
+            const t = v > prev ? (threshold - prev) / (v - prev) : 0;
+            found = step - 1 + Math.min(1, Math.max(0, t));
+            break;
+          }
+        }
+        prev = v;
+      }
+      // Rien trouvé (côté hors cadre, fond trop proche de la carte) : on s'en
+      // remet à la droite ajustée, jamais au fond.
+      border[line] = found < 0 ? pad : found;
+    }
+    despeckle(border);
+    return border;
+  };
+
+  const left = scanSide(PH, sampleBg(0, strip, 0, PH), (y, s) => y * PW + s);
+  const right = scanSide(PH, sampleBg(PW - strip, PW, 0, PH), (y, s) => y * PW + (PW - 1 - s));
+  const top = scanSide(PW, sampleBg(0, PW, 0, strip), (x, s) => s * PW + x);
+  const bottom = scanSide(PW, sampleBg(0, PW, PH - strip, PH), (x, s) => (PH - 1 - s) * PW + x);
+
+  // Alpha = intersection des 4 contraintes, en couverture sous-pixel (bord
+  // net mais non crénelé). Un coin, arrondi ou carré, sort naturellement de
+  // cette intersection : on n'a plus rien à présumer de sa forme.
+  const cover = (v: number) => (v <= 0 ? 0 : v >= 1 ? 1 : v);
+  for (let py = 0; py < PH; py++) {
+    for (let px = 0; px < PW; px++) {
+      const i = (py * PW + px) * 4;
+      const a =
+        cover(px - left[py] + 1) *
+        cover(PW - 1 - right[py] - px + 1) *
+        cover(py - top[px] + 1) *
+        cover(PH - 1 - bottom[px] - py + 1);
+      dst4(d, i, a);
+    }
+  }
+}
+
+function dst4(d: Uint8ClampedArray, i: number, a: number): void {
+  d[i + 3] = Math.round(d[i + 3] * a);
+}
+
+/** Recadre sur la matière : la carte entière, ses défauts compris, rien de plus. */
+function cropToAlpha(src: HTMLCanvasElement): HTMLCanvasElement {
+  const ctx = src.getContext("2d", { willReadFrequently: true })!;
+  const { width: W, height: H } = src;
+  const d = ctx.getImageData(0, 0, W, H).data;
+  let x0 = W;
+  let x1 = -1;
+  let y0 = H;
+  let y1 = -1;
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      if (d[(y * W + x) * 4 + 3] > 8) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+    }
+  }
+  if (x1 < x0 || y1 < y0) return src;
+  const out = document.createElement("canvas");
+  out.width = x1 - x0 + 1;
+  out.height = y1 - y0 + 1;
+  out.getContext("2d")!.drawImage(src, -x0, -y0);
+  return out;
 }

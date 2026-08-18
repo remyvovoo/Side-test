@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import Anthropic, { APIError } from "@anthropic-ai/sdk";
 import { z } from "zod";
 import type { Locale } from "@prisma/client";
 import { auth } from "@/auth";
@@ -16,12 +16,24 @@ export const maxDuration = 60;
 const ANALYSIS_LIMIT = Number(process.env.AI_ANALYSIS_LIMIT ?? 30);
 
 /**
- * Modèle utilisé pour la lecture de la photo et la recherche en ligne. Voir la
- * note de coût dans CLAUDE.md avant de changer la valeur par défaut.
- * Réglable sans redéploiement via ANTHROPIC_MODEL (utile si le modèle par
- * défaut est temporairement saturé côté Anthropic).
+ * Modèle utilisé pour la lecture de la photo. Voir la note de coût dans
+ * CLAUDE.md avant de changer la valeur par défaut. Réglable sans redéploiement
+ * via ANTHROPIC_MODEL.
  */
 const MODEL = process.env.ANTHROPIC_MODEL || "claude-opus-5";
+
+/**
+ * Repli automatique si MODEL est temporairement saturé côté Anthropic (déjà
+ * rencontré : Opus 5 en panne sur les requêtes image + sortie structurée
+ * précisément, alors qu'un simple appel texte passait — vraisemblablement une
+ * capacité serveur spécifique à cette combinaison, distincte d'une panne
+ * générale du modèle). Sonnet 5 gère la même requête de façon fiable.
+ */
+const FALLBACK_MODEL = process.env.ANTHROPIC_FALLBACK_MODEL || "claude-sonnet-5";
+
+function isOverloadOrServerError(e: unknown): e is APIError {
+  return e instanceof APIError && !!e.status && (e.status === 429 || e.status >= 500);
+}
 
 const BodySchema = z.object({
   // data URL JPEG produite côté navigateur (~1500 px, qualité 0.85)
@@ -169,43 +181,57 @@ export async function POST(req: NextRequest) {
     | "image/png"
     | "image/webp";
 
-  // L'API peut renvoyer un 529 « saturé » passager : le SDK réessaie tout seul,
-  // avec attente progressive, avant de nous rendre la main.
-  const client = new Anthropic({ apiKey, maxRetries: 3 });
+  const client = new Anthropic({ apiKey, maxRetries: 2 });
+
+  const visionParams = {
+    max_tokens: 1024,
+    system: buildSystemPrompt(target.label),
+    output_config: {
+      // Extraction courte : pas besoin de réflexion approfondie, on privilégie
+      // la latence et le coût.
+      effort: "low" as const,
+      format: { type: "json_schema" as const, schema: buildFactsSchema(target.label) },
+    },
+    messages: [
+      {
+        role: "user" as const,
+        content: [
+          { type: "image" as const, source: { type: "base64" as const, media_type: mediaType, data } },
+          {
+            type: "text" as const,
+            text: "Relève les informations imprimées sur cette carte. Laisse vide tout ce qui n'est pas lisible.",
+          },
+        ],
+      },
+    ],
+  };
 
   let response;
   try {
-    response = await client.messages.create({
-      model: MODEL,
-      max_tokens: 1024,
-      system: buildSystemPrompt(target.label),
-      output_config: {
-        // Extraction courte : pas besoin de réflexion approfondie, on privilégie
-        // la latence et le coût.
-        effort: "low",
-        format: { type: "json_schema", schema: buildFactsSchema(target.label) },
-      },
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "image", source: { type: "base64", media_type: mediaType, data } },
-            {
-              type: "text",
-              text: "Relève les informations imprimées sur cette carte. Laisse vide tout ce qui n'est pas lisible.",
-            },
-          ],
-        },
-      ],
-    });
+    // Un seul essai rapide sur le modèle principal : en cas de saturation, le
+    // ré-essayer en boucle ne sert à rien (la même capacité reste indisponible)
+    // — mieux vaut basculer tout de suite sur le modèle de repli.
+    response = await client.messages.create(
+      { model: MODEL, ...visionParams },
+      { maxRetries: 0 }
+    );
   } catch (e) {
-    console.error("[cardshot] analyze-card: appel Claude en échec", e);
-    // Saturation passagère (529) ou débit dépassé (429) : ce n'est pas la photo
-    // qui est en cause, réessayer dans quelques secondes suffit.
-    if (e instanceof Anthropic.APIError && (e.status === 529 || e.status === 429)) {
-      return NextResponse.json({ error: "overloaded" }, { status: 503 });
+    if (!isOverloadOrServerError(e)) {
+      console.error("[cardshot] analyze-card: appel Claude en échec", e);
+      return NextResponse.json({ error: "analysis_failed" }, { status: 502 });
     }
-    return NextResponse.json({ error: "analysis_failed" }, { status: 502 });
+    console.warn(
+      `[cardshot] analyze-card: ${MODEL} saturé (${e.status}), repli sur ${FALLBACK_MODEL}`
+    );
+    try {
+      response = await client.messages.create({ model: FALLBACK_MODEL, ...visionParams });
+    } catch (e2) {
+      console.error("[cardshot] analyze-card: repli aussi en échec", e2);
+      if (isOverloadOrServerError(e2)) {
+        return NextResponse.json({ error: "overloaded" }, { status: 503 });
+      }
+      return NextResponse.json({ error: "analysis_failed" }, { status: 502 });
+    }
   }
 
   // Un refus (classificateurs de sécurité) renvoie un 200 avec un contenu vide :

@@ -29,6 +29,10 @@ interface CustomizeScreenProps {
   /** Mode espace connecté : le studio est un aperçu, les réglages sont derrière « Ajuster ». */
   compact?: boolean;
   onSaveAsDefaults?: () => void;
+  /** Identification des infos par l'IA (absente si non disponible). */
+  aiStatus?: "idle" | "running" | "done" | "error";
+  aiMessage?: string;
+  onRunAi?: () => void;
 }
 
 export function CustomizeScreen({
@@ -53,6 +57,9 @@ export function CustomizeScreen({
   onContinue,
   compact = false,
   onSaveAsDefaults,
+  aiStatus = "idle",
+  aiMessage = "",
+  onRunAi,
 }: CustomizeScreenProps) {
   const mainCanvasRef = useRef<HTMLCanvasElement>(null);
   const logoInputRef = useRef<HTMLInputElement>(null);
@@ -151,6 +158,24 @@ export function CustomizeScreen({
               <i className="ti ti-chevron-down chev" />
             </div>
             <div className="cs-collapse-body">
+              {onRunAi && (
+                <div className={`cs-ai-row cs-ai-${aiStatus}`}>
+                  {aiStatus === "running" ? (
+                    <>
+                      <span className="cs-ai-spin" aria-hidden="true" />
+                      <span>Lecture de la carte par l&apos;IA…</span>
+                    </>
+                  ) : (
+                    <>
+                      <i className={`ti ${aiStatus === "error" ? "ti-alert-triangle" : "ti-sparkles"}`} />
+                      <span>{aiMessage || "Laisse l'IA lire le nom, le numéro et la série sur ta photo."}</span>
+                      <button className="cs-ai-btn" onClick={onRunAi} type="button">
+                        {aiStatus === "idle" ? "Identifier" : "Relancer"}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
               <div className="field-grid" style={{ marginBottom: 8 }}>
                 <input
                   type="text"

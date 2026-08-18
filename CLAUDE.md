@@ -39,6 +39,7 @@ Remy (dossantos.remy@vovoo.fr) est le fondateur, **non-développeur**. Il agit c
 - **Cartes persistées en base** (modèle `Card`) : la carte est enregistrée dès l'arrivée sur l'écran d'export, pas au téléchargement. Grille cliquable, page de détail éditable, corbeille au survol, sélection multiple.
 - **Annonce générée par modèles** (`generate-description.ts`) : l'utilisateur définit ses gabarits de titre et de description avec des variables (`{nom}`, `{série}`, `{état}`, `{numéro}`…). Les lignes dont toutes les variables sont vides disparaissent automatiquement.
 - **Réglages studio par défaut** (`/dashboard/studio`) : le wizard démarre pré-configuré, « Ajuster » reste optionnel. L'UI est **scindée en deux** — ce qui concerne l'annonce d'un côté, le visuel/studio de l'autre (demande explicite de Remy).
+- **Identification des infos par IA** (chantier C) : la photo détourée part vers `/api/analyze-card` (Claude vision, sortie structurée) dès la validation du recto ; nom, numéro, série, langue et rareté préremplissent les champs **encore vides** du studio — ce que le vendeur a saisi n'est jamais écrasé. Bandeau d'état + bouton « Relancer » dans « Infos de ma carte ». Le modèle a pour consigne de **ne jamais compléter de mémoire** : ce qui n'est pas lisible reste vide (une annonce inventée est pire qu'un champ à remplir). Plafond d'essai par compte : `User.aiAnalysisCount` vs `AI_ANALYSIS_LIMIT` (30 par défaut), décompté uniquement sur une analyse réussie. Repères mesurés sur une vraie carte (Pikachu 052/196) : **~2 centimes et 6 à 23 s par carte** avec `claude-opus-5` en effort `low` ; Claude Haiku 4.5 coûte ~0,4 centime et répond en 4,5 s mais rate la rareté — changer de modèle = une constante dans `src/app/api/analyze-card/route.ts`, c'est un arbitrage coût/qualité à valider avec Remy.
 - **Détourage maison** (`src/lib/wizard/local-cutout.ts`) : seuillage d'Otsu sur une distance colorimétrique insensible aux ombres, plus grande composante connexe, rebouchage des trous, contrôle de plausibilité (portrait, ratio ~1,4, rectangle plein). Gratuit, instantané, zéro dépendance. **remove.bg n'est plus qu'une roue de secours.**
 
 **Décisions produit actées (ne pas les rouvrir sans que Remy le demande) :**
@@ -48,7 +49,8 @@ Remy (dossantos.remy@vovoo.fr) est le fondateur, **non-développeur**. Il agit c
 - Le rendu studio est un chantier **itératif** : Remy juge sur pièce à chaque passe.
 
 **Pas fait / en attente — ne pas supposer que c'est fait :**
-- **Identification des informations de la carte par IA** (numéro, nom, série) pour pré-remplir l'annonce : **prochain chantier**, autorisé par Remy. Nécessite `ANTHROPIC_API_KEY` dans `.env.local` + Vercel. Charger le skill `claude-api` avant d'écrire la moindre ligne. Prévoir un plafond d'essai (~30 analyses).
+- **Série / extension non détectée** : sur la plupart des cartes, le nom de l'extension n'est pas imprimé (seul un symbole l'indique). L'IA laisse donc le champ vide plutôt que de deviner. Le déduire du symbole est possible mais c'est un chantier à part, à arbitrer avec Remy (risque d'annonce fausse).
+- **`ANTHROPIC_API_KEY` n'est pas encore dans Vercel** : en production, l'identification IA renverra « pas encore configurée » tant que la variable n'y est pas ajoutée.
 - Le parcours principal (les 8 écrans du wizard) est **encore 100 % en français codé en dur**, pas branché sur `src/lib/i18n/`.
 - Correction de perspective (redressement d'une photo prise de travers) — le recadrage ne fait qu'un rectangle englobant, pas une déformation en quadrilatère. Explicitement mis de côté par choix (complexité/risque), pas oublié.
 - Univers « Bureau » (décor sobre, choix de couleur de fond) et « Atelier bois » : validés, pas commencés.
@@ -99,4 +101,4 @@ npx prisma studio         # interface graphique pour voir/modifier les données
 
 ## Variables d'environnement attendues (voir `.env.example`)
 
-`REMOVE_BG_KEY`, `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `AUTH_SECRET`. Toutes doivent aussi être configurées dans Vercel (Settings → Environment Variables) pour que la production fonctionne — le local (`.env`/`.env.local`) et Vercel sont deux configurations séparées à maintenir en parallèle.
+`REMOVE_BG_KEY`, `DATABASE_URL`, `DATABASE_URL_UNPOOLED`, `AUTH_SECRET`, `ANTHROPIC_API_KEY` (identification IA ; sans elle la fonction se désactive proprement), `AI_ANALYSIS_LIMIT` (optionnelle, 30 par défaut). Toutes doivent aussi être configurées dans Vercel (Settings → Environment Variables) pour que la production fonctionne — le local (`.env`/`.env.local`) et Vercel sont deux configurations séparées à maintenir en parallèle.

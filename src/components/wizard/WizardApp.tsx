@@ -24,9 +24,27 @@ import { buildDetailShotList } from "@/lib/detail-shots/detail-shot-list";
 import { buildAndDownloadZip } from "@/lib/wizard/export-zip";
 import { loadSellerBoilerplate, saveSellerBoilerplate } from "@/lib/wizard/seller-profile";
 import { generateDescription } from "@/lib/wizard/generate-description";
+import { analyzeCard, mergeFacts, AnalyzeCardError } from "@/lib/wizard/analyze-card";
 import type { QualityResult } from "@/lib/quality/types";
 
 type GuideTarget = "camera" | "gallery" | "tips";
+export type AiStatus = "idle" | "running" | "done" | "error";
+
+function aiErrorMessage(e: unknown): string {
+  if (e instanceof AnalyzeCardError) {
+    switch (e.code) {
+      case "quota_exceeded":
+        return `Limite d'essai atteinte (${e.limit ?? 30} identifications).`;
+      case "not_configured":
+        return "Identification IA pas encore configurée.";
+      case "unauthorized":
+        return "Session expirée — reconnecte-toi.";
+      case "refused":
+        return "L'IA n'a pas pu analyser cette photo.";
+    }
+  }
+  return "L'identification a échoué. Réessaie.";
+}
 
 interface WizardAppProps {
   isAuthenticated: boolean;
@@ -104,6 +122,13 @@ export function WizardApp({
   const [sourceBlob, setSourceBlob] = useState<Blob | null>(null);
   const [quality, setQuality] = useState<QualityResult | null>(null);
 
+  // Identification des infos de la carte par l'IA (chantier C).
+  const [aiStatus, setAiStatus] = useState<AiStatus>("idle");
+  const [aiMessage, setAiMessage] = useState("");
+  const aiBusyRef = useRef(false);
+  // Une seule analyse automatique par carte ; les suivantes sont manuelles.
+  const aiAutoDoneRef = useRef(false);
+
   const [guideOpen, setGuideOpen] = useState(false);
   const [guideTarget, setGuideTarget] = useState<GuideTarget | null>(null);
   const [emailModalOpen, setEmailModalOpen] = useState(false);
@@ -160,7 +185,39 @@ export function WizardApp({
     setDescription("");
     setCardInfo(EMPTY_CARD_INFO);
     savedCardIdRef.current = null;
+    setAiStatus("idle");
+    setAiMessage("");
+    aiAutoDoneRef.current = false;
     startFlow();
+  }
+
+  /**
+   * Lit les informations imprimées sur la photo (nom, numéro, série…) et
+   * préremplit les champs encore vides. Ce que le vendeur a saisi lui-même
+   * n'est jamais écrasé.
+   */
+  async function identifyCard(image: HTMLImageElement) {
+    if (!isAuthenticated || aiBusyRef.current) return;
+    aiBusyRef.current = true;
+    setAiStatus("running");
+    setAiMessage("");
+    try {
+      const { facts } = await analyzeCard(image);
+      const foundSomething = Object.values(facts).some((v) => v.trim());
+      setCardInfo((info) => mergeFacts(info, facts));
+      setAiStatus("done");
+      setAiMessage(
+        foundSomething
+          ? "Champs préremplis par l'IA — vérifie-les avant de publier."
+          : "Rien de lisible sur cette photo : saisis les infos à la main."
+      );
+    } catch (e) {
+      console.error("[cardshot] identification IA", e);
+      setAiStatus("error");
+      setAiMessage(aiErrorMessage(e));
+    } finally {
+      aiBusyRef.current = false;
+    }
   }
 
   // ----- Source / guide -----
@@ -225,6 +282,12 @@ export function WizardApp({
   function handleCropApply(result: HTMLImageElement) {
     if (face === "recto") {
       setRectoImage(result);
+      // L'IA lit la carte en tâche de fond pendant que le vendeur enchaîne sur
+      // le verso : les champs sont déjà remplis quand il arrive au studio.
+      if (!aiAutoDoneRef.current) {
+        aiAutoDoneRef.current = true;
+        void identifyCard(result);
+      }
       go("verso");
     } else {
       setVersoImage(result);
@@ -505,6 +568,9 @@ export function WizardApp({
           onContinue={handleContinueToExport}
           compact={embedded}
           onSaveAsDefaults={embedded ? saveStudioAsDefaults : undefined}
+          aiStatus={aiStatus}
+          aiMessage={aiMessage}
+          onRunAi={isAuthenticated ? () => void identifyCard(rectoImage) : undefined}
         />
       )}
 

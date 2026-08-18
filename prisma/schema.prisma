@@ -38,6 +38,8 @@ model User {
   defaultHalo      Float?
   defaultLogoText  String @default("")
   defaultLogoImage String @default("") // data URL du logo importé (vide = logo Cardshot)
+  // Nombre d'identifications IA déjà consommées (plafond d'essai, voir AI_ANALYSIS_LIMIT)
+  aiAnalysisCount Int @default(0)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

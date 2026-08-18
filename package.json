@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.117.1",
     "@prisma/client": "^6.19.3",
     "bcryptjs": "^3.0.3",
     "jszip": "^3.10.1",

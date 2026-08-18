@@ -16,7 +16,10 @@ export function MountPreview({ mountIdx, angle }: { mountIdx: number; angle: -1 
       rectoImage: demoCard(),
       versoImage: null,
       mount: MOUNTS[mountIdx],
-      theme: THEMES[0],
+      // Toujours un univers DESSINÉ ici : en mode plaque, le socle n'est pas
+      // dessiné (la scène est déjà dans la photo) — or cette vignette sert
+      // précisément à montrer le support.
+      theme: THEMES.find((t) => !t.plate) ?? THEMES[0],
       reflect: 0.5,
       halo: 0.7,
       logoImage: null,
@@ -28,14 +31,33 @@ export function MountPreview({ mountIdx, angle }: { mountIdx: number; angle: -1 
   return <canvas ref={ref} />;
 }
 
-/** Pastille d'un univers : son fond seul. */
+/** Pastille d'un univers : sa photo de scène s'il en a une, sinon son fond dessiné. */
 export function ThemeChipPreview({ themeIdx }: { themeIdx: number }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
-    if (!ref.current) return;
-    ref.current.width = 208;
-    ref.current.height = 130;
-    drawBg(ref.current.getContext("2d")!, 208, 130, THEMES[themeIdx], 0.8);
+    const canvas = ref.current;
+    if (!canvas) return;
+    canvas.width = 208;
+    canvas.height = 130;
+    const ctx = canvas.getContext("2d")!;
+    const theme = THEMES[themeIdx];
+    // Fond dessiné tout de suite (et en repli le temps du chargement)…
+    drawBg(ctx, 208, 130, theme, 0.8);
+    if (!theme.plate) return;
+    // …puis la vraie photo de la scène, rognée en « cover ».
+    let cancelled = false;
+    const img = new Image();
+    img.onload = () => {
+      if (cancelled) return;
+      const s = Math.max(208 / img.naturalWidth, 130 / img.naturalHeight);
+      const dw = img.naturalWidth * s;
+      const dh = img.naturalHeight * s;
+      ctx.drawImage(img, (208 - dw) / 2, (130 - dh) / 2, dw, dh);
+    };
+    img.src = theme.plate;
+    return () => {
+      cancelled = true;
+    };
   }, [themeIdx]);
   return <canvas ref={ref} />;
 }

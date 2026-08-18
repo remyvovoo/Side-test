@@ -6,11 +6,10 @@ import type { StudioTheme } from "./types";
  * artist, so this list is the seed of the future "Studio" asset table.
  */
 export const THEMES: StudioTheme[] = [
-  // ESSAI (18 août 2026, non validé par Remy) : premier univers sur photographie
-  // réelle — scène vide tirée de sa référence « support acrylique sur fond noir ».
-  // ⚠️ La plaque actuelle vient d'une photo de marchand retouchée : bonne pour
-  // JUGER l'approche en local, interdite en production (droits). À remplacer par
-  // une photo à nous avant tout déploiement.
+  // Premier univers sur photographie réelle : scène vide tirée de la photo de
+  // Remy « support acrylique sur fond noir » (droits confirmés par lui le
+  // 18 août 2026 — c'est sa propre photo). Carte, support et mention légale
+  // effacés par retouche ; la vraie brillance du sol vient de la photo.
   {
     id: "studio-noir-photo",
     name: "Studio Photo",

@@ -111,7 +111,9 @@ export function SellerProfileForm({
         <div className="dash-panel-head">
           <b>Modèle de description</b>
           <span>
-            Le corps de l&apos;annonce. Les lignes dont les variables sont vides disparaissent automatiquement.
+            Texte 100 % libre — écris-le comme tu veux (une phrase, une liste…) et clique une variable pour
+            l&apos;insérer où se trouve le curseur. Les lignes dont les variables sont vides disparaissent
+            automatiquement.
           </span>
         </div>
         <textarea

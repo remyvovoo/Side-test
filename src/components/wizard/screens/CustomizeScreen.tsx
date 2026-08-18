@@ -208,12 +208,14 @@ export function CustomizeScreen({
                 />
               </div>
               <div className="field-grid">
-                <input
-                  type="text"
-                  placeholder="Prix (ex : 35 €)"
-                  value={cardInfo.price}
-                  onChange={(e) => onCardInfoChange({ ...cardInfo, price: e.target.value })}
-                />
+                <div className="field-suffix">
+                  <input
+                    type="text"
+                    placeholder="Prix (ex : 35)"
+                    value={cardInfo.price}
+                    onChange={(e) => onCardInfoChange({ ...cardInfo, price: e.target.value })}
+                  />
+                </div>
                 <select
                   className={aiTargetClass(cardInfo.rarity)}
                   value={cardInfo.rarity}

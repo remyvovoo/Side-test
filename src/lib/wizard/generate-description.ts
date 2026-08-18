@@ -26,7 +26,14 @@ export const ANNONCE_VARIABLES = [
 
 export const DEFAULT_TITLE_TEMPLATE = "{nom} – {série} – {état}";
 
+/**
+ * Modèle par défaut : une phrase d'accroche naturelle (une seule variable —
+ * disparaît proprement si le nom est vide), puis la liste habituelle pour le
+ * reste. Le champ est un texte 100 % libre (voir SellerProfileForm) : rien
+ * n'empêche un vendeur de tout réécrire en prose s'il préfère.
+ */
 export const DEFAULT_DESCRIPTION_TEMPLATE = [
+  "Je mets en vente cette carte {nom}.",
   "Numéro : {numéro}",
   "Série : {série}",
   "Rareté : {rareté}",

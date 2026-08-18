@@ -2,7 +2,7 @@ import { makeCam, cardCorners } from "./geometry";
 import { drawBg } from "./draw-background";
 import { drawPlatform } from "./draw-platform";
 import { drawStandBase, drawCase } from "./draw-stand";
-import { drawGroundShadow, drawReflection, drawPerspective, applyPhotoGrade } from "./draw-effects";
+import { drawGroundShadow, drawReflection, drawPerspective, drawCardEdge, applyPhotoGrade } from "./draw-effects";
 import { drawLogoBadge, drawInfoTag } from "./draw-overlays";
 import type { RenderRequest } from "./types";
 
@@ -42,6 +42,12 @@ export function renderShot(canvas: HTMLCanvasElement, request: RenderRequest): v
   const liftY = hCard * 0.42;
   const ang = (shot.angle * 16 * Math.PI) / 180;
   const q = cardCorners(cam, wCard, hCard, ang, liftY);
+  // Plan arrière de la carte, décalé de son épaisseur — sert à dessiner la
+  // tranche visible sur les prises pivotées (angle !== 0). Épaisseur exagérée
+  // par rapport à une vraie carte (~0,3 mm) pour qu'elle se voie à l'écran ;
+  // à ajuster visuellement si Remy la trouve trop fine ou trop épaisse.
+  const cardThickness = hCard * 0.03;
+  const qBack = ang !== 0 ? cardCorners(cam, wCard, hCard, ang, liftY, cardThickness) : null;
 
   // Podium de présentation : dessiné avant l'objet, il pose la scène.
   drawPlatform(ctx, cam, wCard, liftY, theme, request.halo);
@@ -138,6 +144,11 @@ export function renderShot(canvas: HTMLCanvasElement, request: RenderRequest): v
   ctx.filter = `blur(${26 * scale}px)`;
   ctx.drawImage(sil, 0, 12 * scale);
   ctx.restore();
+
+  // Tranche avant la face avant : celle-ci la recouvre, seul le bord qui
+  // dépasse réellement de la silhouette (le côté qui s'éloigne de la caméra)
+  // reste visible.
+  if (qBack) drawCardEdge(ctx, q, qBack);
 
   ctx.drawImage(cardLayer, 0, 0);
 

@@ -56,7 +56,14 @@ export function cardCorners(
   wCard: number,
   hCard: number,
   ang: number,
-  liftY: number
+  liftY: number,
+  /**
+   * Décalage le long de l'épaisseur de la carte (perpendiculaire à sa face,
+   * donc avant rotation). 0 = la face avant (comportement historique) ; une
+   * valeur positive donne le plan arrière, utilisé pour dessiner la tranche
+   * visible quand la carte est pivotée — voir drawCardEdge.
+   */
+  depthOffset = 0
 ): Point2D[] {
   const hw = wCard / 2;
   // Légère inclinaison vers l'arrière (pivot sur le bord inférieur) : une
@@ -66,10 +73,10 @@ export function cardCorners(
   const cosL = Math.cos(LEAN);
   const sinL = Math.sin(LEAN);
   const pts = [
-    { x: -hw, y: -hCard * cosL, z: hCard * sinL },
-    { x: hw, y: -hCard * cosL, z: hCard * sinL },
-    { x: hw, y: 0, z: 0 },
-    { x: -hw, y: 0, z: 0 },
+    { x: -hw, y: -hCard * cosL, z: hCard * sinL + depthOffset },
+    { x: hw, y: -hCard * cosL, z: hCard * sinL + depthOffset },
+    { x: hw, y: 0, z: depthOffset },
+    { x: -hw, y: 0, z: depthOffset },
   ];
   return pts.map((p) => {
     const r = rotY(p, ang);

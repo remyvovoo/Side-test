@@ -44,6 +44,43 @@ export function drawPerspective(
   ctx.restore();
 }
 
+/**
+ * Tranche de la carte : sans elle, une carte pivotée est un plan parfait
+ * d'épaisseur nulle — impossible à distinguer d'un rectangle plat, quelle que
+ * soit la qualité du détourage. On dessine les 2 bords latéraux (gauche et
+ * droit) entre la face avant `qFront` et un second plan `qBack` légèrement
+ * décalé en profondeur (voir cardCorners). Appelé AVANT la face avant : elle
+ * la recouvre, seul le bord qui dépasse réellement en dehors de la silhouette
+ * (celui qui s'éloigne de la caméra) reste visible — inutile de calculer quel
+ * côté c'est, l'occlusion s'en charge toute seule.
+ */
+export function drawCardEdge(ctx: CanvasRenderingContext2D, qFront: Point2D[], qBack: Point2D[]) {
+  const [TLf, TRf, BRf, BLf] = qFront;
+  const [TLb, TRb, BRb, BLb] = qBack;
+
+  function side(top: Point2D, topBack: Point2D, bottomBack: Point2D, bottom: Point2D) {
+    ctx.beginPath();
+    ctx.moveTo(top.x, top.y);
+    ctx.lineTo(topBack.x, topBack.y);
+    ctx.lineTo(bottomBack.x, bottomBack.y);
+    ctx.lineTo(bottom.x, bottom.y);
+    ctx.closePath();
+    // Tranche de carton : crème côté lumière, sombre côté arrière — la même
+    // logique que la pellicule de papier qu'on aperçoit sur une vraie carte
+    // inclinée, sans se caler sur l'âme noire spécifique à certaines éditions
+    // (pas générique à tous les jeux).
+    const g = ctx.createLinearGradient(top.x, top.y, topBack.x, topBack.y);
+    g.addColorStop(0, "#f5f0e2");
+    g.addColorStop(0.5, "#cfc8b4");
+    g.addColorStop(1, "#332f26");
+    ctx.fillStyle = g;
+    ctx.fill();
+  }
+
+  side(TRf, TRb, BRb, BRf); // tranche droite
+  side(TLf, TLb, BLb, BLf); // tranche gauche
+}
+
 export function drawGroundShadow(ctx: CanvasRenderingContext2D, corners: Point2D[]) {
   const BL = corners[3];
   const BR = corners[2];

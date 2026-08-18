@@ -97,8 +97,9 @@ export function CardEditor({
           {/* eslint-disable-next-line @next/next/no-img-element -- vignette data-URL générée par le moteur */}
           <img src={thumbnail} alt={info.name || "Carte"} className="dash-editor-thumb" />
           <p className="dash-editor-note">
-            <i className="ti ti-info-circle" /> Le retéléchargement des visuels arrivera avec le stockage des
-            photos — pour l&apos;instant, garde le ZIP téléchargé à la création.
+            <i className="ti ti-info-circle" /> Les infos et l&apos;annonce ci-contre restent modifiables à tout
+            moment. Seuls les visuels (photos studio) ne sont pas encore retéléchargeables depuis ici — garde le
+            ZIP téléchargé à la création en attendant le stockage des photos.
           </p>
         </div>
 
@@ -117,12 +118,14 @@ export function CardEditor({
               />
             </div>
             <div className="field-grid">
-              <input
-                type="text"
-                placeholder="Prix (ex : 35 €)"
-                value={info.price}
-                onChange={(e) => set("price", e.target.value)}
-              />
+              <div className="field-suffix">
+                <input
+                  type="text"
+                  placeholder="Prix (ex : 35)"
+                  value={info.price}
+                  onChange={(e) => set("price", e.target.value)}
+                />
+              </div>
               <select value={info.rarity} onChange={(e) => set("rarity", e.target.value)}>
                 <option value="">Rareté</option>
                 {CARD_RARITIES.map((r) => (

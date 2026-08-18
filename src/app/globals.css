@@ -215,6 +215,11 @@ body {
 .cs-collapse-body { display: none; padding: 0 14px 14px; }
 .cs-collapse.open .cs-collapse-body { display: block; }
 .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+/* Suffixe permanent (ex : « € ») — reste visible même une fois le champ rempli,
+   contrairement à un placeholder qui disparaît dès qu'il y a une valeur. */
+.field-suffix { position: relative; }
+.field-suffix input { padding-right: 28px; width: 100%; }
+.field-suffix::after { content: "€"; position: absolute; right: 12px; top: 50%; transform: translateY(-50%); font-size: 12px; color: var(--text-muted); pointer-events: none; }
 input[type=text], input[type=email], input[type=password], select {
   width: 100%; padding: 10px 12px; border-radius: var(--radius); border: .5px solid var(--border-strong);
   background: var(--surface2); color: var(--text); font-size: 13px; outline: none; font-family: inherit;

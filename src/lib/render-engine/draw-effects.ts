@@ -71,6 +71,32 @@ export function drawGroundShadow(ctx: CanvasRenderingContext2D, corners: Point2D
   ctx.restore();
 }
 
+/**
+ * Traitement « photo » appliqué à l'image finale ENTIÈRE (carte comprise) :
+ * grain, vignettage et voile colorimétrique de l'univers. C'est ce traitement
+ * commun qui soude l'objet et le décor en une seule et même photo.
+ */
+export function applyPhotoGrade(ctx: CanvasRenderingContext2D, W: number, H: number, spot: string) {
+  ctx.fillStyle = `rgba(${spot},0.04)`;
+  ctx.fillRect(0, 0, W, H);
+
+  const g = ctx.getImageData(0, 0, W, H);
+  const d = g.data;
+  for (let k = 0; k < d.length; k += 4) {
+    const n = (Math.random() - 0.5) * 6;
+    d[k] += n;
+    d[k + 1] += n;
+    d[k + 2] += n;
+  }
+  ctx.putImageData(g, 0, 0);
+
+  const vg = ctx.createRadialGradient(W / 2, H * 0.44, W * 0.18, W / 2, H * 0.5, W * 0.72);
+  vg.addColorStop(0, "rgba(0,0,0,0)");
+  vg.addColorStop(1, "rgba(0,0,0,0.55)");
+  ctx.fillStyle = vg;
+  ctx.fillRect(0, 0, W, H);
+}
+
 export function drawReflection(
   ctx: CanvasRenderingContext2D,
   cam: Camera,

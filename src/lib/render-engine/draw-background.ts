@@ -97,19 +97,7 @@ export function drawBg(
     }
   }
 
-  const g = ctx.getImageData(0, 0, W, H);
-  const d = g.data;
-  for (let k = 0; k < d.length; k += 4) {
-    const n = (Math.random() - 0.5) * 6;
-    d[k] += n;
-    d[k + 1] += n;
-    d[k + 2] += n;
-  }
-  ctx.putImageData(g, 0, 0);
-
-  const vg = ctx.createRadialGradient(W / 2, H * 0.44, W * 0.18, W / 2, H * 0.5, W * 0.72);
-  vg.addColorStop(0, "rgba(0,0,0,0)");
-  vg.addColorStop(1, "rgba(0,0,0,0.62)");
-  ctx.fillStyle = vg;
-  ctx.fillRect(0, 0, W, H);
+  // Grain et vignettage : appliqués en fin de rendu sur l'image ENTIÈRE
+  // (carte comprise) par applyPhotoGrade — plus jamais sur le seul décor,
+  // sinon la carte « décolle » du fond.
 }

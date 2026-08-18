@@ -221,33 +221,24 @@ function buildMask(img: HTMLImageElement, thresholdScale: number): MaskResult | 
 }
 
 /**
- * Érosion d'un pixel : un pixel ne survit que si ses 4 voisins sont dans le
- * masque. La frontière du masque (calculée en basse résolution puis agrandie)
- * peut déborder de quelques pixels À L'EXTÉRIEUR de la carte — et ces pixels
- * sont du fond de la photo d'origine, d'où une frange sale le long des bords.
- * En rétrécissant le masque d'un cran, le bord tombe toujours DANS la carte.
+ * Applique le masque à la photo pleine résolution, avec un bord net.
+ *
+ * Histoire du réglage (ne pas re-basculer sans mesurer) : sans traitement, la
+ * frontière du masque basse résolution agrandie ~3× déborde HORS de la carte
+ * → halo de fond gris (1er retour de Remy). Une érosion entière à la
+ * résolution d'analyse corrige trop fort : 1 px d'analyse ≈ 3 px pleine
+ * résolution, la carte semble « rognée » (2e retour de Remy). D'où la version
+ * actuelle : contraction fine À LA PLEINE RÉSOLUTION (~2 px) par intersection
+ * de copies décalées, qui raidit le bord en même temps qu'elle le rentre.
  */
-function erode(mask: Uint8Array, w: number, h: number): Uint8Array {
-  const out = new Uint8Array(w * h);
-  for (let y = 1; y < h - 1; y++) {
-    for (let x = 1; x < w - 1; x++) {
-      const i = y * w + x;
-      if (mask[i] && mask[i - 1] && mask[i + 1] && mask[i - w] && mask[i + w]) out[i] = 1;
-    }
-  }
-  return out;
-}
-
-/** Applique le masque (érodé + léger adoucissement de bord) à la photo pleine résolution. */
 function applyMask(img: HTMLImageElement, m: MaskResult): Promise<HTMLImageElement> {
-  const eroded = erode(m.mask, m.w, m.h);
   const maskCanvas = document.createElement("canvas");
   maskCanvas.width = m.w;
   maskCanvas.height = m.h;
   const mctx = maskCanvas.getContext("2d")!;
   const mi = mctx.createImageData(m.w, m.h);
   for (let i = 0; i < m.w * m.h; i++) {
-    mi.data[i * 4 + 3] = eroded[i] ? 255 : 0;
+    mi.data[i * 4 + 3] = m.mask[i] ? 255 : 0;
   }
   mctx.putImageData(mi, 0, 0);
 
@@ -259,10 +250,27 @@ function applyMask(img: HTMLImageElement, m: MaskResult): Promise<HTMLImageEleme
   const octx = out.getContext("2d")!;
   octx.imageSmoothingEnabled = true;
   octx.imageSmoothingQuality = "high";
-  // Masque agrandi avec un très léger flou : bord doux, sans halo.
-  octx.filter = `blur(${Math.max(1, W / 1500)}px)`;
+  // Masque agrandi avec un très léger flou (anti-crénelage du bord)…
+  octx.filter = `blur(${Math.max(1, W / 2200)}px)`;
   octx.drawImage(maskCanvas, 0, 0, W, H);
   octx.filter = "none";
+  // …puis contraction fine : l'alpha final est le produit du masque et de ses
+  // 4 copies décalées de ~2 px — le bord rentre de ~2 px dans la carte et la
+  // pénombre du flou s'écrase (produit de 5 alphas), donc contour net.
+  const snap = document.createElement("canvas");
+  snap.width = W;
+  snap.height = H;
+  snap.getContext("2d")!.drawImage(out, 0, 0);
+  const r = Math.max(1.5, W / 1100);
+  octx.globalCompositeOperation = "destination-in";
+  for (const [dx, dy] of [
+    [r, 0],
+    [-r, 0],
+    [0, r],
+    [0, -r],
+  ]) {
+    octx.drawImage(snap, dx, dy);
+  }
   octx.globalCompositeOperation = "source-in";
   octx.drawImage(img, 0, 0, W, H);
   return loadImage(out.toDataURL("image/png"));

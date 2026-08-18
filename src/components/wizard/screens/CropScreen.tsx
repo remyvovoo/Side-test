@@ -111,21 +111,45 @@ export function CropScreen({ image, title, onApply, onRetake }: CropScreenProps)
 
   function applyCrop() {
     const c = corners;
-    const minX = Math.min(c[0].x, c[3].x);
-    const maxX = Math.max(c[1].x, c[2].x);
-    const minY = Math.min(c[0].y, c[1].y);
-    const maxY = Math.max(c[2].y, c[3].y);
+    const minX = Math.min(c[0].x, c[1].x, c[2].x, c[3].x);
+    const maxX = Math.max(c[0].x, c[1].x, c[2].x, c[3].x);
+    const minY = Math.min(c[0].y, c[1].y, c[2].y, c[3].y);
+    const maxY = Math.max(c[0].y, c[1].y, c[2].y, c[3].y);
     const w = Math.max(8, Math.round(maxX - minX));
     const h = Math.max(8, Math.round(maxY - minY));
 
-    if (w >= image.width - 2 && h >= image.height - 2) {
+    // Cadre = rectangle droit couvrant toute l'image → rien à découper.
+    const isFullRect =
+      minX <= 2 &&
+      minY <= 2 &&
+      maxX >= image.width - 2 &&
+      maxY >= image.height - 2 &&
+      Math.abs(c[0].x - c[3].x) < 2 &&
+      Math.abs(c[1].x - c[2].x) < 2 &&
+      Math.abs(c[0].y - c[1].y) < 2 &&
+      Math.abs(c[2].y - c[3].y) < 2;
+    if (isFullRect) {
       onApply(image);
       return;
     }
+
+    // Découpe au QUADRILATÈRE tracé (pas seulement son rectangle englobant) :
+    // déplacer une poignée doit réellement retailler la carte — sinon le
+    // réglage manuel n'a aucun effet visible sur une carte déjà détourée
+    // (anomalie signalée par Remy).
     const out = document.createElement("canvas");
     out.width = w;
     out.height = h;
-    out.getContext("2d")!.drawImage(image, minX, minY, w, h, 0, 0, w, h);
+    const ctx2 = out.getContext("2d")!;
+    ctx2.translate(-minX, -minY);
+    ctx2.beginPath();
+    ctx2.moveTo(c[0].x, c[0].y);
+    ctx2.lineTo(c[1].x, c[1].y);
+    ctx2.lineTo(c[2].x, c[2].y);
+    ctx2.lineTo(c[3].x, c[3].y);
+    ctx2.closePath();
+    ctx2.clip();
+    ctx2.drawImage(image, 0, 0);
     const res = new Image();
     res.onload = () => onApply(res);
     res.src = out.toDataURL("image/png");

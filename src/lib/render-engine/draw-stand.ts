@@ -27,18 +27,18 @@ export function drawStandBase(ctx: CanvasRenderingContext2D, cam: Camera, wCard:
   for (let i = 1; i < top.length; i++) ctx.lineTo(top[i].x, top[i].y);
   for (let j = bot.length - 1; j >= 0; j--) ctx.lineTo(bot[j].x, bot[j].y);
   ctx.closePath();
-  ctx.fillStyle = "rgba(200,215,235,0.14)";
+  ctx.fillStyle = "rgba(200,215,235,0.08)";
   ctx.fill();
 
   pathPts(ctx, top);
-  ctx.fillStyle = "rgba(215,228,245,0.13)";
+  ctx.fillStyle = "rgba(215,228,245,0.07)";
   ctx.fill();
-  ctx.strokeStyle = "rgba(240,250,255,0.4)";
+  ctx.strokeStyle = "rgba(240,250,255,0.22)";
   ctx.lineWidth = 1.6;
   ctx.stroke();
 
   pathPts(ctx, bot);
-  ctx.strokeStyle = "rgba(240,250,255,0.22)";
+  ctx.strokeStyle = "rgba(240,250,255,0.12)";
   ctx.lineWidth = 1;
   ctx.stroke();
 }

@@ -81,19 +81,42 @@ export function renderShot(canvas: HTMLCanvasElement, request: RenderRequest): v
     cctx.fillStyle = sg;
     cctx.fillRect(0, 0, W, H);
   }
+  // Balance des blancs + exposition adaptatives : la carte adopte la
+  // température de couleur de l'univers (chaude dans Brasier, froide dans
+  // Abysses) et perd un peu de luminosité — sa photo d'origine est prise en
+  // plein jour, la scène est une pièce sombre.
+  {
+    const [sr, sg2, sb] = theme.spot.split(",").map((v) => parseInt(v.trim(), 10));
+    const k = 0.32; // force du virage colorimétrique
+    const mr = Math.round(255 - (255 - sr) * k);
+    const mg = Math.round(255 - (255 - sg2) * k);
+    const mb = Math.round(255 - (255 - sb) * k);
+    // Le mode « multiply » déborde sur les zones transparentes : on garde la
+    // silhouette d'origine pour restaurer l'alpha juste après.
+    const alphaRef = document.createElement("canvas");
+    alphaRef.width = W;
+    alphaRef.height = H;
+    alphaRef.getContext("2d")!.drawImage(cardLayer, 0, 0);
+    cctx.globalCompositeOperation = "multiply";
+    cctx.fillStyle = `rgba(${mr},${mg},${mb},0.55)`;
+    cctx.fillRect(0, 0, W, H);
+    cctx.globalCompositeOperation = "destination-in";
+    cctx.drawImage(alphaRef, 0, 0);
+    cctx.globalCompositeOperation = "source-atop";
+  }
   const topY = Math.min(q[0].y, q[1].y);
   const botY = Math.max(q[2].y, q[3].y);
   const tint = cctx.createLinearGradient(0, topY, 0, botY);
-  tint.addColorStop(0, `rgba(${theme.spot},${0.1 * request.halo})`);
-  tint.addColorStop(0.55, `rgba(${theme.spot},0.03)`);
+  tint.addColorStop(0, `rgba(${theme.spot},${0.06 * request.halo})`);
+  tint.addColorStop(0.55, `rgba(${theme.spot},0.02)`);
   tint.addColorStop(1, "rgba(4,4,12,0.16)");
   cctx.fillStyle = tint;
   cctx.fillRect(0, 0, W, H);
   const sheen = cctx.createLinearGradient(q[0].x, q[0].y, q[2].x, q[2].y);
   sheen.addColorStop(0.3, "rgba(255,255,255,0)");
-  sheen.addColorStop(0.42, `rgba(255,255,255,${0.06 * request.halo})`);
-  sheen.addColorStop(0.47, `rgba(255,255,255,${0.13 * request.halo})`);
-  sheen.addColorStop(0.54, `rgba(255,255,255,${0.05 * request.halo})`);
+  sheen.addColorStop(0.42, `rgba(255,255,255,${0.035 * request.halo})`);
+  sheen.addColorStop(0.47, `rgba(255,255,255,${0.08 * request.halo})`);
+  sheen.addColorStop(0.54, `rgba(255,255,255,${0.03 * request.halo})`);
   sheen.addColorStop(0.64, "rgba(255,255,255,0)");
   cctx.fillStyle = sheen;
   cctx.fillRect(0, 0, W, H);

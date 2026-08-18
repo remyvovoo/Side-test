@@ -25,9 +25,9 @@ export function drawPlatform(
   // faible derrière l'objet — comme une vraie source lumineuse au sol.
   const ringGlow = Math.max(0.25, intensity);
   const N = 72;
-  [1.35, 1.62].forEach((k, idx) => {
+  [1.5, 1.92].forEach((k, idx) => {
     const ring = projEllipse(cam, 0, 0, R * k, R * k * 0.66, groundY + thick, N);
-    const base = (idx === 0 ? 0.5 : 0.28) * ringGlow;
+    const base = (idx === 0 ? 0.58 : 0.34) * ringGlow;
     ctx.save();
     ctx.lineCap = "round";
     for (let pass = 0; pass < 2; pass++) {

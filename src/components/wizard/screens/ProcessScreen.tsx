@@ -57,7 +57,11 @@ async function runPipeline(
   // Détourage maison d'abord : gratuit, instantané, aucune dépendance.
   // remove.bg ne sert plus que de roue de secours si notre détourage
   // juge son propre résultat implausible.
-  let hdCutout = await localRemoveBackground(baseImage);
+  const local = await localRemoveBackground(baseImage);
+  let hdCutout = local?.image ?? null;
+  // Une carte redressée géométriquement est DÉJÀ droite et bord à bord :
+  // la repasser au redressement/recentrage pixel ne ferait que la dégrader.
+  const alreadyRectified = local?.rectified ?? false;
   if (!hdCutout) {
     onMessage("Détourage renforcé…");
     const cutoutBlob = await removeBackground(compressed);
@@ -66,8 +70,11 @@ async function runPipeline(
     hdCutout = await applyCutoutMask(baseImage, cutoutImage);
   }
 
-  onMessage("Redressement de la carte…");
-  const straightened = await autoStraighten(hdCutout);
+  let straightened = hdCutout;
+  if (!alreadyRectified) {
+    onMessage("Redressement de la carte…");
+    straightened = await autoStraighten(hdCutout);
+  }
 
   onMessage("Vérification du cadrage…");
   // Le cadrage est mesuré AVANT recentrage : il évalue la photo d'origine.
@@ -76,6 +83,8 @@ async function runPipeline(
 
   const quality = cachedQuality ?? combineQuality(sharpness, resolution, framing);
   if (!cachedQuality && sourceHash) writeQualityCache(sourceHash, quality);
+
+  if (alreadyRectified) return { image: straightened, quality };
 
   // Recentrage : la carte remplit l'image au lieu de flotter dans les marges.
   const centered = await cropToVisible(straightened);

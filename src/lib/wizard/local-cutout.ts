@@ -1,4 +1,5 @@
 import { loadImage } from "./image-utils";
+import { fitCardQuad, rectifyCard, type Pt } from "./card-geometry";
 
 /**
  * Détourage maison, gratuit et instantané — zéro service externe.
@@ -285,13 +286,37 @@ function isPlausibleCard(m: MaskResult): boolean {
   return true;
 }
 
-export async function localRemoveBackground(img: HTMLImageElement): Promise<HTMLImageElement | null> {
+export interface CutoutResult {
+  image: HTMLImageElement;
+  /** Vrai si la carte a été redressée géométriquement (perspective corrigée). */
+  rectified: boolean;
+}
+
+export async function localRemoveBackground(
+  img: HTMLImageElement
+): Promise<CutoutResult | null> {
   // Plusieurs passes : si le premier seuil isole un sous-élément de la carte
   // (ex. le cadre de l'illustration, plus contrasté que la carte entière),
   // on abaisse le seuil jusqu'à retrouver un rectangle plausible.
   for (const scale of [1, 0.45, 0.28]) {
     const m = buildMask(img, scale);
-    if (m && isPlausibleCard(m)) return applyMask(img, m);
+    if (!m || !isPlausibleCard(m)) continue;
+
+    // Voie GÉOMÉTRIQUE d'abord : bords parfaitement droits et perspective
+    // corrigée. Le masque ne sert plus qu'à localiser la carte, pas à
+    // dessiner son contour — c'est ce qui élimine halo et rognage.
+    const quad = fitCardQuad(m.mask, m.w, m.h);
+    if (quad) {
+      const sx = (img.naturalWidth || img.width) / m.w;
+      const sy = (img.naturalHeight || img.height) / m.h;
+      const full: Pt[] = quad.map((p) => ({ x: p.x * sx, y: p.y * sy }));
+      try {
+        return { image: await rectifyCard(img, full), rectified: true };
+      } catch {
+        // on retombe sur le détourage pixel ci-dessous
+      }
+    }
+    return { image: await applyMask(img, m), rectified: false };
   }
   return null;
 }

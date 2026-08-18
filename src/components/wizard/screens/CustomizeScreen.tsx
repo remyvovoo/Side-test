@@ -120,13 +120,17 @@ export function CustomizeScreen({
             )}
           </div>
           <div className="angle-nav">
-            <button className="angle-btn" onClick={() => cycleShot(-1)} aria-label="Angle précédent" type="button">
-              <i className="ti ti-chevron-left" />
-            </button>
+            {shots.length > 1 && (
+              <button className="angle-btn" onClick={() => cycleShot(-1)} aria-label="Vue précédente" type="button">
+                <i className="ti ti-chevron-left" />
+              </button>
+            )}
             <span className="angle-label">{currentShot.name}</span>
-            <button className="angle-btn" onClick={() => cycleShot(1)} aria-label="Angle suivant" type="button">
-              <i className="ti ti-chevron-right" />
-            </button>
+            {shots.length > 1 && (
+              <button className="angle-btn" onClick={() => cycleShot(1)} aria-label="Vue suivante" type="button">
+                <i className="ti ti-chevron-right" />
+              </button>
+            )}
           </div>
         </div>
 

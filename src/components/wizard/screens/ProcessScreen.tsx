@@ -5,11 +5,7 @@ import {
   compressImage,
   loadImage,
   autoDetectBounds,
-  autoStraighten,
-  cropToVisible,
-  applyCutoutMask,
 } from "@/lib/wizard/image-utils";
-import { removeBackground, RemoveBackgroundError } from "@/lib/wizard/remove-background";
 import { localRemoveBackground } from "@/lib/wizard/local-cutout";
 import { computeSharpnessScore, computeResolutionScore } from "@/lib/quality/analyze-photo";
 import { computeFramingScore } from "@/lib/quality/analyze-framing";
@@ -62,39 +58,19 @@ async function runPipeline(
   onMessage("Suppression du fond…");
   const baseImage = await loadImage(URL.createObjectURL(compressed));
 
-  // Détourage maison d'abord : gratuit, instantané, aucune dépendance.
-  // remove.bg ne sert plus que de roue de secours si notre détourage
-  // juge son propre résultat implausible.
+  // Détourage maison, gratuit et instantané : c'est le SEUL chemin.
+  //
+  // La voie géométrique (ajustement des 4 droites puis redressement) est la
+  // seule à laquelle on fasse confiance. Le détourage au pixel produisait des
+  // silhouettes déchirées sur fond peu contrasté, et le service de secours
+  // payant ne faisait pas mieux tout en coûtant à chaque photo. Règle de Remy
+  // le 19 août 2026 : afficher directement « fond uni » plutôt que tenter un
+  // rattrapage. Un échec nommé vaut mieux qu'un résultat douteux.
   const local = await localRemoveBackground(baseImage);
-  // Détourage AU PIXEL = résultat auquel on ne fait pas confiance. C'est lui
-  // qui produit les silhouettes déchirées sur fond peu contrasté (carte jaune
-  // sur du bois). Règle posée par Remy le 19 août 2026 : plutôt que d'afficher
-  // une carte mal détourée, on demande une photo sur fond uni. On ne garde
-  // donc que la voie géométrique, et le service de secours prend le relais.
-  const trusted = local?.rectified === true;
-  let hdCutout = trusted ? local!.image : null;
-  // Une carte redressée géométriquement est DÉJÀ droite et bord à bord :
-  // la repasser au redressement/recentrage pixel ne ferait que la dégrader.
-  const alreadyRectified = local?.rectified ?? false;
-  if (!hdCutout) {
-    onMessage("Détourage renforcé…");
-    let cutoutBlob: Blob;
-    try {
-      cutoutBlob = await removeBackground(compressed);
-    } catch (e) {
-      // Ni notre géométrie ni le secours : le fond est en cause, on le dit.
-      throw new LowContrastError(e);
-    }
-    const cutoutImage = await loadImage(URL.createObjectURL(cutoutBlob));
-    onMessage("Restauration de la netteté…");
-    hdCutout = await applyCutoutMask(baseImage, cutoutImage);
-  }
-
-  let straightened = hdCutout;
-  if (!alreadyRectified) {
-    onMessage("Redressement de la carte…");
-    straightened = await autoStraighten(hdCutout);
-  }
+  if (local?.rectified !== true) throw new LowContrastError();
+  // La carte sort déjà droite et bord à bord : la repasser au redressement ou
+  // au recentrage pixel ne ferait que la dégrader.
+  const straightened = local.image;
 
   onMessage("Vérification du cadrage…");
   // Le cadrage est mesuré AVANT recentrage : il évalue la photo d'origine.
@@ -104,12 +80,7 @@ async function runPipeline(
   const quality = cachedQuality ?? combineQuality(sharpness, resolution, framing);
   if (!cachedQuality && sourceHash) writeQualityCache(sourceHash, quality);
 
-  if (alreadyRectified) return { image: straightened, quality };
-
-  // Recentrage : la carte remplit l'image au lieu de flotter dans les marges.
-  const centered = await cropToVisible(straightened);
-
-  return { image: centered, quality };
+  return { image: straightened, quality };
 }
 
 export function ProcessScreen({ sourceBlob, onComplete, onRetake }: ProcessScreenProps) {
@@ -138,10 +109,6 @@ export function ProcessScreen({ sourceBlob, onComplete, onRetake }: ProcessScree
         let m = "Le traitement a échoué.";
         if (e instanceof LowContrastError) {
           m = "Le fond ne se distingue pas assez de la carte. Pose-la sur un fond uni et contrasté, puis reprends la photo.";
-        } else if (e instanceof RemoveBackgroundError) {
-          if (e.code === 402) m = "Service saturé. Réessaie dans un instant.";
-          else if (e.code === 413) m = "Photo trop lourde. Réessaie avec une autre photo.";
-          else if (e.code === 500) m = "Le service de détourage n'est pas configuré. Contacte le support.";
         }
         console.error("[cardshot]", e);
         setError(m);

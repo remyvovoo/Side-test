@@ -392,6 +392,17 @@ export function refineQuadByGradient(img: HTMLImageElement, quad: Pt[], outRatio
 
   const maxScore = candidates.map((cs) => Math.max(...cs.map((k) => k.score), 1e-6));
 
+  // Pour chaque côté, la marche crédible la plus EXTÉRIEURE. Quand deux marches
+  // coexistent — la frontière de la zone imprimée et l'arête de la carte —
+  // c'est toujours la plus extérieure qui borde la carte : au-delà il n'y a que
+  // du fond, en deçà c'est du décor imprimé. Sans ce repère, une carte à
+  // illustration sombre cerclée d'un liseré clair se faisait amputer de son
+  // liseré, la frontière interne étant la plus CONTRASTÉE des deux.
+  const outermost = candidates.map((cs, i) => {
+    const credible = cs.filter((k) => k.score >= maxScore[i] * 0.45);
+    return credible.reduce((best, k) => (k.t > best.t ? k : best), credible[0]);
+  });
+
   let bestQuad = quad;
   let bestValue = -Infinity;
   const idx = [0, 0, 0, 0];
@@ -455,6 +466,8 @@ export function refineQuadByGradient(img: HTMLImageElement, quad: Pt[], outRatio
     for (let i = 0; i < 4; i++) {
       const cand = candidates[i][idx[i]];
       strength += cand.score / maxScore[i];
+      // Prime au bord crédible le plus extérieur (voir `outermost`).
+      if (cand.t === outermost[i].t) strength += 0.6;
       if (cand.t < tMinSel) tMinSel = cand.t;
       if (cand.t > tMaxSel) tMaxSel = cand.t;
     }
@@ -762,6 +775,24 @@ function traceSilhouette(
     }
     const threshold = Math.max(18, median(peaks) * 0.4);
 
+    // Même seuil adaptatif, pour la MARCHE DE LUMINOSITÉ cette fois.
+    const gPeaks: number[] = [];
+    for (let line = 0; line < lines; line += 8) {
+      let mx = 0;
+      for (let step = start + 1; step < depth - 1; step++) {
+        const a = read(line, step + 1);
+        const b = read(line, step - 1);
+        if (!valid[a] || !valid[b]) continue;
+        const g = Math.abs(
+          0.299 * d[a * 4] + 0.587 * d[a * 4 + 1] + 0.114 * d[a * 4 + 2] -
+            (0.299 * d[b * 4] + 0.587 * d[b * 4 + 1] + 0.114 * d[b * 4 + 2])
+        );
+        if (g > mx) mx = g;
+      }
+      gPeaks.push(mx);
+    }
+    const gThreshold = Math.max(EDGE_MIN_STEP, median(gPeaks) * 0.3);
+
     const border = new Float32Array(lines);
     const prof = new Float32Array(depth); // luminance le long du balayage
     for (let line = 0; line < lines; line++) {
@@ -784,27 +815,39 @@ function traceSilhouette(
         prev = v;
       }
 
-      // La couleur n'a rien vu : bord argenté, blanc ou noir sur un fond du
-      // même ton. On cherche alors la MARCHE DE LUMINOSITÉ la plus franche du
-      // couloir. La fenêtre est étroite et déjà centrée sur le bord (les
-      // droites ont été recalées par refineQuadByGradient), donc la marche la
-      // plus forte est bien l'arête de la carte — et les creux d'un éclat
-      // restent relevés au lieu d'être remplacés par une ligne droite.
-      if (found < 0) {
-        let bestStep = -1;
-        let bestGrad = 0;
-        for (let step = start + 1; step < depth - 1; step++) {
-          const a = prof[step + 1];
-          const b = prof[step - 1];
-          if (Number.isNaN(a) || Number.isNaN(b)) continue;
-          const g = Math.abs(a - b);
-          if (g > bestGrad) {
-            bestGrad = g;
-            bestStep = step;
-          }
+      // Deuxième lecture, par MARCHE DE LUMINOSITÉ.
+      //
+      // Elle n'est pas un simple repli : sur une carte à liseré argenté posée
+      // sur une feuille claire, le critère de couleur ne se tait pas, il se
+      // TROMPE. Le liseré ne se distingue pas du fond par la teinte, donc le
+      // balayage file au travers et s'arrête au premier pixel vraiment coloré :
+      // la zone imprimée. Le liseré tombait ainsi hors de la découpe alors même
+      // que le cadre, lui, était juste (constaté par Remy le 19 août 2026 —
+      // « au détourage c'est correct, mais le rendu final retire le contour »).
+      //
+      // On retient la PREMIÈRE marche crédible en venant de l'extérieur, et non
+      // la plus forte. Mesuré sur le Zébibron : à l'intérieur du liseré, la
+      // frontière avec l'illustration sombre présente une marche PLUS FRANCHE
+      // (~90) que l'arête de la carte elle-même (~60). Chercher la plus forte
+      // ramenait donc la découpe à la zone imprimée sur un tiers du côté — le
+      // liseré survivait par endroits et disparaissait ailleurs. Or l'arête
+      // d'une carte est par définition la marche la plus EXTÉRIEURE : au-delà,
+      // il n'y a plus que du fond.
+      let gStep = -1;
+      for (let step = start + 1; step < depth - 1; step++) {
+        const a = prof[step + 1];
+        const b = prof[step - 1];
+        if (Number.isNaN(a) || Number.isNaN(b)) continue;
+        if (Math.abs(a - b) > gThreshold) {
+          gStep = step;
+          break;
         }
-        if (bestStep >= 0 && bestGrad > EDGE_MIN_STEP) found = bestStep;
       }
+      // La plus extérieure des deux lectures l'emporte : elle ne peut
+      // qu'ajouter de la matière, jamais rogner la carte. Et la fenêtre,
+      // bornée par MAX_BULGE_RATIO, empêche d'aller chercher une ombre loin
+      // du bord.
+      if (gStep >= 0 && (found < 0 || gStep < found)) found = gStep;
 
       // Toujours rien (côté hors cadre, fond indiscernable) : on s'en remet à
       // la droite ajustée, jamais au fond.

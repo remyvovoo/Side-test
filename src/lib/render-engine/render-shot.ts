@@ -1,7 +1,7 @@
 import { makeCam, cardCorners } from "./geometry";
 import { drawBg } from "./draw-background";
 import { drawPlatform } from "./draw-platform";
-import { drawStandBase, drawCase } from "./draw-stand";
+import { drawStandBase } from "./draw-stand";
 import {
   drawGroundShadow,
   drawReflection,
@@ -85,7 +85,7 @@ export function renderShot(canvas: HTMLCanvasElement, request: RenderRequest): v
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
 
-  const { theme, mount, shot } = request;
+  const { theme, shot } = request;
   // Plaque photographique si l'univers en a une (et qu'elle est chargée) ;
   // sinon décor dessiné — aussi utilisé en repli le temps du chargement.
   const plate = theme.plate ? getPlate(theme.plate, canvas) : null;
@@ -100,7 +100,7 @@ export function renderShot(canvas: HTMLCanvasElement, request: RenderRequest): v
   const ih = (img as HTMLImageElement).naturalHeight || (img as HTMLCanvasElement).height;
   const ratio = ih / iw;
   const scale = W / 1000;
-  let wCard = (mount.id === "case" ? 360 : 390) * scale;
+  let wCard = 390 * scale;
   let hCard = wCard * ratio;
   if (hCard > H * 0.62) {
     hCard = H * 0.62;
@@ -159,7 +159,7 @@ export function renderShot(canvas: HTMLCanvasElement, request: RenderRequest): v
   ctx.translate(0, plateDy);
   drawGroundShadow(ctx, q);
   drawReflection(ctx, cam, img, wCard, hCard, ang, liftY, request.reflect);
-  if (!plate) drawStandBase(ctx, cam, mount.id === "case" ? wCard * 1.06 : wCard, liftY);
+  if (!plate) drawStandBase(ctx, cam, wCard, liftY);
 
   // --- Calque carte hors écran : la silhouette réelle de la carte détourée
   // (coins arrondis compris) sert pour l'ombre ET reçoit la lumière — plus
@@ -246,7 +246,6 @@ export function renderShot(canvas: HTMLCanvasElement, request: RenderRequest): v
 
   ctx.drawImage(cardLayer, 0, 0);
 
-  if (mount.id === "case") drawCase(ctx, q, wCard);
   ctx.restore(); // fin du décalage « ligne de pose » (plaque)
 
   // Traitement photo final commun : carte + décor reçoivent la même

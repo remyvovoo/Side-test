@@ -233,7 +233,9 @@ export function StudioDefaultsForm({ initial }: { initial: StudioDefaults }) {
       </div>
 
       <div className="dash-studio-controls">
-        <div className="dash-panel">
+        {/* Un seul présentoir depuis le retrait du boîtier : un choix à une
+            option n'est pas un choix, on masque le panneau. */}
+        <div className="dash-panel" hidden={MOUNTS.length < 2}>
           <div className="dash-panel-head">
             <b>Présentoir</b>
           </div>

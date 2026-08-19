@@ -157,7 +157,14 @@ body {
 .quality-tip { display: flex; gap: 9px; align-items: flex-start; font-size: 12.5px; color: var(--text-secondary); line-height: 1.5; }
 .quality-tip i { font-size: 14px; margin-top: 1px; flex-shrink: 0; }
 
-.crop-stage { position: relative; border-radius: 14px; overflow: hidden; margin: 0 auto 1rem; max-width: 340px; background: repeating-conic-gradient(#1a1926 0% 25%,#232235 0% 50%) 0 0/22px 22px; touch-action: none; }
+/* Marge de respiration : la carte détourée ne touche pas les bords du cadre,
+   pour que le vendeur voie exactement ce que le détourage a retenu — y
+   compris un bord mordu ou un coin manquant, qui autrement se confondraient
+   avec la limite du cadre (demande de Remy, 19 août 2026). La marge est
+   d'AFFICHAGE : elle n'entre jamais dans l'image, sans quoi les proportions
+   changeraient et le moteur studio calculerait une carte de la mauvaise
+   taille. */
+.crop-stage { position: relative; border-radius: 14px; overflow: hidden; margin: 0 auto 1rem; padding: 18px; max-width: 340px; background: repeating-conic-gradient(#1a1926 0% 25%,#232235 0% 50%) 0 0/22px 22px; touch-action: none; }
 /* Sélecteur d'élément et non d'id : le canvas React n'a pas d'id (l'ancien
    prototype HTML avait #cropCanvas), et sans cette règle il s'affichait à sa
    taille réelle, donc rogné par le cadre. */

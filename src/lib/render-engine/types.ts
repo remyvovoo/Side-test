@@ -28,7 +28,14 @@ export interface StudioTheme {
   plateGround?: number;
 }
 
-export type MountId = "stand" | "case";
+/**
+ * Le boîtier a été retiré le 19 août 2026 : c'était un objet DESSINÉ, absent
+ * de la photo — la faute même qu'on s'interdit depuis le détourage fidèle.
+ * Et il devenait absurde sur une carte déjà sous coque, cas fréquent : un
+ * faux boîtier par-dessus un vrai, avec le risque de faire passer une carte
+ * simple pour une carte gradée.
+ */
+export type MountId = "stand";
 
 export interface Mount {
   id: MountId;

@@ -6,5 +6,4 @@ import type { Mount } from "./types";
  */
 export const MOUNTS: Mount[] = [
   { id: "stand", name: "Pied acrylique", sub: "Le classique" },
-  { id: "case", name: "Boîtier", sub: "Protection premium" },
 ];

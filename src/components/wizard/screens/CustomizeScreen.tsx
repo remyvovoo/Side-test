@@ -142,6 +142,10 @@ export function CustomizeScreen({
 
         <div className="custo-controls">
           <div className={compact && !adjustOpen ? "cs-hidden" : undefined}>
+          {/* Un seul présentoir depuis le retrait du boîtier : un choix à une
+              option n'est pas un choix, on masque la section. */}
+          {MOUNTS.length > 1 && (
+            <>
           <span className="section-label">Présentoir</span>
           <div className="opt-grid">
             {MOUNTS.map((m, i) => (
@@ -156,6 +160,8 @@ export function CustomizeScreen({
               </div>
             ))}
           </div>
+            </>
+          )}
 
           <span className="section-label" style={{ marginTop: "1rem" }}>
             Univers

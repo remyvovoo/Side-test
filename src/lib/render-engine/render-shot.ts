@@ -100,10 +100,17 @@ export function renderShot(canvas: HTMLCanvasElement, request: RenderRequest): v
   const ih = (img as HTMLImageElement).naturalHeight || (img as HTMLCanvasElement).height;
   const ratio = ih / iw;
   const scale = W / 1000;
-  let wCard = 390 * scale;
+  // La carte remplit largement le cadre : c'est elle le produit, pas le décor.
+  // Avant le 19 août 2026 elle faisait 390 px de large sur 1000 et n'occupait
+  // que 18 % de la surface — sur la vignette d'une annonce (200 px de côté),
+  // elle tombait à 50 px de haut et le texte fin partait en bouillie. Elle
+  // était aussi réduite de 781 px à 351 px, une division par 2,2 qui coûtait
+  // tout le détail. Constat de Remy le 19 août 2026 : « le rendu n'est pas
+  // beau », la moitié basse illisible.
+  let wCard = 515 * scale;
   let hCard = wCard * ratio;
-  if (hCard > H * 0.62) {
-    hCard = H * 0.62;
+  if (hCard > H * 0.76) {
+    hCard = H * 0.76;
     wCard = hCard / ratio;
   }
 

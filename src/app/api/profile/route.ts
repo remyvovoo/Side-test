@@ -16,7 +16,9 @@ const ProfileSchema = z.object({
   defaultLogoText: z.string().max(40).optional(),
   defaultLogoImage: z
     .string()
-    .max(300_000)
+    // Le logo est stocké en data URL, à 600 px de côté au plus (voir
+    // StudioDefaultsForm) : il faut de la marge pour un PNG à ce format.
+    .max(1_200_000)
     .refine((v) => v === "" || v.startsWith("data:image/"), "invalid_logo")
     .optional(),
   // Placement du logo vendeur sur le mur : centre du bloc en fraction du

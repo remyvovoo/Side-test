@@ -68,12 +68,18 @@ export function wallLogoRect(
 }
 
 /**
- * Bande du cadre où le logo mural a le droit de se trouver : le HAUT, c'est-
- * à-dire le mur. Remy : « autour de l'objet et sous l'objet le logo ne devrait
- * pas pouvoir s'afficher » — au sol ou collé à la carte, il cesse d'être une
- * enseigne au fond de la pièce et redevient un autocollant.
+ * Zone où le logo mural peut se trouver : tout le cadre, à une marge près.
+ *
+ * Historique, pour ne pas refaire l'aller-retour : cette zone a d'abord été
+ * limitée au haut du cadre parce que Remy ne voulait pas voir le logo
+ * « autour et sous l'objet ». Il a ensuite demandé à pouvoir le placer sur le
+ * CÔTÉ de la carte et EN DESSOUS. Les deux demandes sont compatibles : ce
+ * qu'il refusait, c'est que le logo se retrouve à moitié masqué par la carte
+ * — pas qu'on puisse le poser ailleurs qu'en haut. Le placement est donc
+ * libre, et c'est le vendeur qui décide ; la carte reste devant, ce qui est
+ * physiquement juste pour une enseigne au fond de la pièce.
  */
-export const LOGO_BOUNDS = { minX: 0.08, maxX: 0.92, minY: 0.05, maxY: 0.3 };
+export const LOGO_BOUNDS = { minX: 0.04, maxX: 0.96, minY: 0.04, maxY: 0.96 };
 export const clampLogoPos = (p: { x: number; y: number }) => ({
   x: Math.min(LOGO_BOUNDS.maxX, Math.max(LOGO_BOUNDS.minX, p.x)),
   y: Math.min(LOGO_BOUNDS.maxY, Math.max(LOGO_BOUNDS.minY, p.y)),

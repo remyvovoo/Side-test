@@ -154,18 +154,25 @@ export function StudioDefaultsForm({ initial }: { initial: StudioDefaults }) {
 
   function handleLogoFile(file: File | null) {
     if (!file) return;
-    // Redimensionne le logo (~200 px) pour rester léger en base.
+    // Le logo est ré-échantillonné à 600 px de côté au plus. C'était 200 px,
+    // ce qui suffisait à la pastille d'origine mais pixelisait dès qu'on
+    // agrandissait le logo mural (signalé par Remy). Le PNG conserve la
+    // transparence ; à terme ces fichiers iront dans Vercel Blob plutôt que
+    // dans une colonne de la base.
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
-      const MAX = 200;
+      const MAX = 600;
       const s = Math.min(MAX / img.width, MAX / img.height, 1);
       const c = document.createElement("canvas");
       c.width = Math.max(1, Math.round(img.width * s));
       c.height = Math.max(1, Math.round(img.height * s));
       c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
       URL.revokeObjectURL(url);
+      // Un logo importé REMPLACE le nom de boutique : on n'affiche jamais les
+      // deux (même règle que pour le filigrane Cardshot).
       setLogoDataUrl(c.toDataURL("image/png"));
+      setLogoText("");
     };
     img.src = url;
   }
@@ -308,12 +315,15 @@ export function StudioDefaultsForm({ initial }: { initial: StudioDefaults }) {
               e.target.value = "";
             }}
           />
+          {/* Le nom de boutique est l'ALTERNATIVE au logo, pas son complément :
+              il ne sert que si rien n'a été importé. */}
           <input
             type="text"
-            placeholder="Nom affiché (ex : Ma Boutique)"
+            placeholder={logoDataUrl ? "Remplacé par ton logo" : "Nom affiché (ex : Ma Boutique)"}
             value={logoText}
             onChange={(e) => setLogoText(e.target.value)}
             maxLength={40}
+            disabled={!!logoDataUrl}
           />
         </div>
 

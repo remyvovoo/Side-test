@@ -76,10 +76,10 @@ export async function buildAndDownloadZip({
     folder.file(`detail-${d.face}-${d.slug}.${ext}`, blob);
   }
 
-  const thumbCanvas = document.createElement("canvas");
-  renderShot(thumbCanvas, { ...baseRequest, shot: { face: "recto", angle: 0, name: "" }, size: 500 });
-  const thumbBlob = await canvasToBlob(thumbCanvas, "jpg");
-  folder.file("miniature.jpg", thumbBlob);
+  // Pas de miniature : c'était le MÊME visuel que le recto de face, re-rendu
+  // à 500 px. Un doublon en moins bonne qualité, donc inexploitable pour une
+  // annonce — les marchands fabriquent eux-mêmes leurs vignettes à partir de
+  // la photo principale. Retiré à la demande de Remy le 19 août 2026.
 
   folder.file("description.txt", description || "");
 

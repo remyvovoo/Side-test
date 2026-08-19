@@ -191,5 +191,24 @@ export function drawReflection(
   oc.fillStyle = mask;
   oc.fillRect(0, 0, off.width, off.height);
 
+  // Le reflet ne doit jamais atteindre le bas du cadre. Son dégradé propre
+  // s'éteint à `bot`, mais quand la carte est posée bas dans l'image, `bot`
+  // tombe SOUS le canvas : le reflet est alors encore visible au dernier
+  // pixel et le bord le tranche net (repéré par Remy le 19 août 2026, sur
+  // le rendu de face). Ce second évanouissement, ancré sur le cadre et non
+  // sur la carte, garantit un alpha nul au bord quelle que soit la position.
+  const H = off.height;
+  const fadeFrom = H * 0.82;
+  if (bot > fadeFrom) {
+    const edge = oc.createLinearGradient(0, fadeFrom, 0, H);
+    edge.addColorStop(0, "rgba(0,0,0,1)");
+    edge.addColorStop(1, "rgba(0,0,0,0)");
+    // Plein cadre : en destination-in, toute zone non peinte serait effacée.
+    // Un dégradé prolonge sa première teinte au-dessus de son point de
+    // départ, donc le haut du reflet reste intact.
+    oc.fillStyle = edge;
+    oc.fillRect(0, 0, off.width, H);
+  }
+
   ctx.drawImage(off, 0, 0);
 }

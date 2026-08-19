@@ -82,6 +82,8 @@ export function WizardApp({
   const router = useRouter();
   const [screen, setScreen] = useState<ScreenName>(embedded ? "source" : "home");
   const [face, setFace] = useState<Face>("recto");
+  /** Chemin choisi pour le recto (appareil ou galerie) ; le verso le reprend. */
+  const [lastSource, setLastSource] = useState<"camera" | "gallery">("camera");
 
   const [rectoImage, setRectoImage] = useState<HTMLImageElement | null>(null);
   const [versoImage, setVersoImage] = useState<HTMLImageElement | null>(null);
@@ -175,7 +177,10 @@ export function WizardApp({
   }
   function startVerso() {
     setFace("verso");
-    go("source");
+    // Le verso suit le chemin choisi pour le recto : qui a importé sa première
+    // photo n'a aucune raison de se voir proposer l'appareil pour la seconde
+    // (les deux faces d'une carte se photographient dans la même foulée).
+    openGuide(lastSource);
   }
   function restartFlow() {
     setRectoImage(null);
@@ -226,8 +231,13 @@ export function WizardApp({
 
   // ----- Source / guide -----
   function launchSource(target: GuideTarget) {
-    if (target === "camera") go("camera");
-    else if (target === "gallery") fileInputRef.current?.click();
+    if (target === "camera") {
+      setLastSource("camera");
+      go("camera");
+    } else if (target === "gallery") {
+      setLastSource("gallery");
+      fileInputRef.current?.click();
+    }
   }
 
   function openGuide(target: GuideTarget) {
@@ -547,7 +557,9 @@ export function WizardApp({
         />
       )}
 
-      {screen === "verso" && <VersoScreen onAddVerso={startVerso} onSkip={() => go("customize")} />}
+      {screen === "verso" && (
+        <VersoScreen onAddVerso={startVerso} onSkip={() => go("customize")} sourceMode={lastSource} />
+      )}
 
       {screen === "customize" && rectoImage && (
         <CustomizeScreen

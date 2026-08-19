@@ -3,9 +3,12 @@
 interface VersoScreenProps {
   onAddVerso: () => void;
   onSkip: () => void;
+  /** Chemin retenu pour le recto : le verso l'annonce et le reprend. */
+  sourceMode: "camera" | "gallery";
 }
 
-export function VersoScreen({ onAddVerso, onSkip }: VersoScreenProps) {
+export function VersoScreen({ onAddVerso, onSkip, sourceMode }: VersoScreenProps) {
+  const fromGallery = sourceMode === "gallery";
   return (
     <div className="screen" id="screen-verso">
       <div className="verso-card">
@@ -18,7 +21,8 @@ export function VersoScreen({ onAddVerso, onSkip }: VersoScreenProps) {
           ça double tes visuels.
         </p>
         <button className="btn btn-primary" onClick={onAddVerso} type="button">
-          <i className="ti ti-camera" /> Photographier le verso
+          <i className={fromGallery ? "ti ti-photo" : "ti ti-camera"} />{" "}
+          {fromGallery ? "Importer le verso" : "Photographier le verso"}
         </button>
         <button className="btn btn-ghost" style={{ marginTop: 8 }} onClick={onSkip} type="button">
           Passer, recto seulement

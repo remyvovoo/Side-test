@@ -513,3 +513,20 @@ button.opt-card:focus-visible, button.theme-chip:focus-visible { outline: 2px so
 .auth-field .pw-wrap input { width: 100%; padding-right: 44px; }
 .auth-field .pw-eye { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 17px; border-radius: 8px; }
 .auth-field .pw-eye:hover { color: var(--text); }
+
+/* En-tête : sur petit écran, quatre éléments sur une ligne débordaient
+   latéralement. On raccourcit plutôt que d'empiler, pour garder l'appel à
+   l'essai visible. Le badge « Pokémon » disparaît : c'est de la décoration. */
+.only-narrow { display: inline-flex; }
+.only-wide { display: none; }
+@media (min-width: 560px) {
+  .only-narrow { display: none; }
+  .only-wide { display: inline; }
+}
+@media (max-width: 559px) {
+  .brand-tag { display: none; }
+  .topbar { gap: 8px; }
+  .topbar-signin { padding-left: 10px; padding-right: 10px; }
+}
+/* Filet de sécurité : aucune page ne doit pouvoir glisser latéralement. */
+html, body { max-width: 100%; overflow-x: hidden; }

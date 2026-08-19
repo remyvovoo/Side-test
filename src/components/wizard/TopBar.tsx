@@ -45,11 +45,18 @@ export function TopBar({ showBack, onBack, onBrandClick, onProfileClick }: TopBa
         ) : (
           status !== "loading" && (
             <>
-              <Link href="/login" className="btn btn-ghost btn-sm topbar-link">
-                Se connecter
+              {/* Sur mobile, quatre éléments sur une ligne faisaient déborder
+                  la page latéralement (constaté par Remy le 19 août 2026 sur
+                  iPhone). « Se connecter » se réduit à une icône, et le
+                  bouton d'essai à un libellé court : c'est l'action qu'on
+                  veut garder visible, pas sa longueur. */}
+              <Link href="/login" className="btn btn-ghost btn-sm topbar-link topbar-signin" aria-label="Se connecter">
+                <span className="only-wide">Se connecter</span>
+                <i className="ti ti-login only-narrow" />
               </Link>
               <Link href="/register" className="btn btn-primary btn-sm topbar-link">
-                Essai gratuit 30 jours
+                <span className="only-wide">Essai gratuit 30 jours</span>
+                <span className="only-narrow">Essai gratuit</span>
               </Link>
             </>
           )

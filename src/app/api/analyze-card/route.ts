@@ -12,8 +12,17 @@ export const runtime = "nodejs";
 // L'analyse d'une image prend quelques secondes ; la limite Vercel par défaut est courte.
 export const maxDuration = 60;
 
-/** Nombre d'identifications offertes par compte pendant l'essai. */
-const ANALYSIS_LIMIT = Number(process.env.AI_ANALYSIS_LIMIT ?? 30);
+/**
+ * Nombre d'identifications offertes par compte pendant l'essai.
+ *
+ * Ce n'est PAS un plafond produit, c'est un garde-fou de coût (~2 centimes
+ * l'analyse) : le compteur `User.aiAnalysisCount` est cumulatif et ne se remet
+ * jamais à zéro. Porté de 30 à 100 le 19 août 2026 à la demande de Remy, qui
+ * butait dessus en testant. Le jour où l'offre existera, ce plafond devra être
+ * lié au plan et remis à zéro périodiquement — Remy a écarté l'abonnement pour
+ * l'instant, rien n'est construit dans ce sens.
+ */
+const ANALYSIS_LIMIT = Number(process.env.AI_ANALYSIS_LIMIT ?? 100);
 
 /**
  * Modèle utilisé pour la lecture de la photo. Voir la note de coût dans

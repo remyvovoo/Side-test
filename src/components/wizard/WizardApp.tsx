@@ -35,7 +35,7 @@ function aiErrorMessage(e: unknown): string {
   if (e instanceof AnalyzeCardError) {
     switch (e.code) {
       case "quota_exceeded":
-        return `Limite d'essai atteinte (${e.limit ?? 30} identifications).`;
+        return `Limite d'essai atteinte (${e.limit ?? 100} identifications).`;
       case "overloaded":
         return "Le service d'IA est saturé. Réessaie dans quelques secondes.";
       case "not_configured":

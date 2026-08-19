@@ -11,7 +11,7 @@ import { SellerProfileModal } from "./SellerProfileModal";
 import { HomeScreen } from "./screens/HomeScreen";
 import { SourceScreen } from "./screens/SourceScreen";
 import { CameraScreen } from "./screens/CameraScreen";
-import { ProcessScreen, type CropSource } from "./screens/ProcessScreen";
+import { ProcessScreen, qualityFromQuad, type CropSource, type PipelineResult } from "./screens/ProcessScreen";
 import { QualityScreen } from "./screens/QualityScreen";
 import { CropScreen } from "./screens/CropScreen";
 import { VersoScreen } from "./screens/VersoScreen";
@@ -26,6 +26,7 @@ import { loadSellerBoilerplate, saveSellerBoilerplate } from "@/lib/wizard/selle
 import { generateDescription } from "@/lib/wizard/generate-description";
 import { analyzeCard, mergeFacts, AnalyzeCardError } from "@/lib/wizard/analyze-card";
 import type { QualityResult } from "@/lib/quality/types";
+import type { Corner } from "@/lib/wizard/image-utils";
 
 type GuideTarget = "camera" | "gallery" | "tips";
 export type AiStatus = "idle" | "running" | "done" | "error";
@@ -95,6 +96,11 @@ export function WizardApp({
   // Photo d'origine + coins détectés : l'écran de recadrage en a besoin pour
   // pouvoir élargir la découpe, pas seulement la resserrer.
   const [pendingCropSource, setPendingCropSource] = useState<CropSource | null>(null);
+  // Détection impossible : on rend la main au vendeur au lieu d'un cul-de-sac.
+  const [pendingUncertain, setPendingUncertain] = useState(false);
+  const pendingScoreRef = useRef<{ resolution: number; sourceHash: string | null } | null>(null);
+  /** Découpe déjà obtenue, en attente de l'écran qualité (chemin manuel). */
+  const croppedRef = useRef<HTMLImageElement | null>(null);
 
   const [mountIndex, setMountIndex] = useState(initialMountIndex);
   const [themeIndex, setThemeIndex] = useState(initialThemeIndex);
@@ -297,14 +303,41 @@ export function WizardApp({
     setTimeout(() => fileInputRef.current?.click(), 300);
   }
 
-  function handleProcessComplete(cutoutImage: HTMLImageElement, q: QualityResult, cropSource: CropSource | null) {
-    setPendingImage(cutoutImage);
-    setPendingCropSource(cropSource);
-    setQuality(q);
-    go("quality");
+  function handleProcessComplete(result: PipelineResult) {
+    setPendingImage(result.image);
+    setPendingCropSource(result.cropSource);
+    setQuality(result.quality);
+    setPendingUncertain(!!result.uncertain);
+    pendingScoreRef.current = result.uncertain
+      ? { resolution: result.resolution ?? 0, sourceHash: result.sourceHash ?? null }
+      : null;
+    // Détection ratée : la note de qualité n'a pas de sens tant qu'on ne sait
+    // pas où est la carte. On envoie donc le vendeur cadrer d'abord, et on
+    // note ensuite — l'écran qualité arrive juste après.
+    go(result.uncertain ? "crop" : "quality");
   }
 
-  function handleCropApply(result: HTMLImageElement) {
+  function handleCropApply(result: HTMLImageElement, quad: Corner[]) {
+    // Chemin « détection ratée » : maintenant qu'on a un cadre, on peut noter
+    // la photo. On passe par l'écran qualité avant de continuer.
+    const pendingScore = pendingScoreRef.current;
+    if (pendingScore && pendingCropSource) {
+      pendingScoreRef.current = null;
+      setPendingUncertain(false);
+      setPendingImage(result);
+      setQuality(
+        qualityFromQuad(pendingCropSource.image, quad, pendingScore.resolution, pendingScore.sourceHash)
+      );
+      croppedRef.current = result;
+      go("quality");
+      return;
+    }
+    proceedWithCropped(result);
+  }
+
+  /** Suite du parcours une fois la carte découpée et la note affichée. */
+  function proceedWithCropped(result: HTMLImageElement) {
+    croppedRef.current = null;
     if (face === "recto") {
       setRectoImage(result);
       // L'IA lit la carte en tâche de fond pendant que le vendeur enchaîne sur
@@ -578,14 +611,31 @@ export function WizardApp({
       )}
 
       {screen === "quality" && quality && (
-        <QualityScreen quality={quality} onContinue={() => go("crop")} onRetake={() => go("source")} />
+        <QualityScreen
+          quality={quality}
+          onContinue={() => {
+            // Si la découpe a déjà été faite à la main, l'écran qualité arrive
+            // APRÈS le recadrage : on enchaîne au lieu d'y retourner.
+            const already = croppedRef.current;
+            if (already) proceedWithCropped(already);
+            else go("crop");
+          }}
+          onRetake={() => go("source")}
+        />
       )}
 
-      {screen === "crop" && pendingImage && (
+      {screen === "crop" && (pendingImage || pendingCropSource) && (
         <CropScreen
           image={pendingImage}
           cropSource={pendingCropSource}
-          title={face === "recto" ? "Vérifie le découpage" : "Vérifie le verso"}
+          uncertain={pendingUncertain}
+          title={
+            pendingUncertain
+              ? "Place le cadre sur ta carte"
+              : face === "recto"
+                ? "Vérifie le découpage"
+                : "Vérifie le verso"
+          }
           onApply={handleCropApply}
           onRetake={() => go("source")}
         />

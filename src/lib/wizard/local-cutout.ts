@@ -1,5 +1,5 @@
 import { loadImage } from "./image-utils";
-import { fitCardQuad, rectifyCard, type Pt } from "./card-geometry";
+import { fitCardQuad, rectifyCard, refineQuadByGradient, type Pt } from "./card-geometry";
 
 /**
  * Détourage maison, gratuit et instantané — zéro service externe.
@@ -334,7 +334,13 @@ export async function localRemoveBackground(
     if (quad) {
       const sx = (img.naturalWidth || img.width) / m.w;
       const sy = (img.naturalHeight || img.height) / m.h;
-      const full: Pt[] = quad.map((p) => ({ x: p.x * sx, y: p.y * sy }));
+      const rough: Pt[] = quad.map((p) => ({ x: p.x * sx, y: p.y * sy }));
+      // Le masque ne voit que ce qui DIFFÈRE DE COULEUR du fond : sur une carte
+      // à liseré argenté, blanc ou noir posée sur un fond de même ton, il
+      // s'arrête à la zone imprimée. Ce quadrilatère n'est donc qu'une piste —
+      // les vrais bords sont retrouvés à la marche de luminosité, à pleine
+      // résolution (voir refineQuadByGradient).
+      const full = refineQuadByGradient(img, rough);
       try {
         return { image: await rectifyCard(img, full), rectified: true, quad: full };
       } catch {

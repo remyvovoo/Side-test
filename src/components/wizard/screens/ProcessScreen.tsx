@@ -19,16 +19,26 @@ export interface CropSource {
   quad: Corner[];
 }
 
+/** Proportions supposées d'une carte, pour proposer un cadre de départ. */
+const CARD_RATIO_GUESS = 88 / 63;
+
 interface ProcessScreenProps {
   sourceBlob: Blob;
-  onComplete: (cutoutImage: HTMLImageElement, quality: QualityResult, cropSource: CropSource | null) => void;
+  onComplete: (result: PipelineResult) => void;
   onRetake: () => void;
 }
 
-interface PipelineResult {
-  image: HTMLImageElement;
-  quality: QualityResult;
+export interface PipelineResult {
+  /** Null quand la détection n'a rien donné : c'est au vendeur de cadrer. */
+  image: HTMLImageElement | null;
+  /** Null dans le même cas : la note se calcule une fois le cadre posé. */
+  quality: QualityResult | null;
   cropSource: CropSource | null;
+  /** Vrai si l'on rend la main faute d'avoir su trouver la carte. */
+  uncertain?: boolean;
+  /** Reportés pour pouvoir terminer la note après l'ajustement manuel. */
+  resolution?: number;
+  sourceHash?: string | null;
 }
 
 // Déduplication : en dev, React monte les effets deux fois — les deux montages
@@ -75,7 +85,36 @@ async function runPipeline(
   // le 19 août 2026 : afficher directement « fond uni » plutôt que tenter un
   // rattrapage. Un échec nommé vaut mieux qu'un résultat douteux.
   const local = await localRemoveBackground(baseImage);
-  if (local?.rectified !== true || !local.quad) throw new LowContrastError();
+  if (local?.rectified !== true || !local.quad) {
+    // Détection impossible : plutôt qu'un cul-de-sac, on passe la main au
+    // vendeur. Il voit sa photo, place les 4 coins à peu près, et la recherche
+    // fine du bord repart de là — exactement le même traitement qu'en
+    // automatique. Un aveu franc suivi d'un outil qui marche vaut mieux qu'un
+    // message d'échec, et bien mieux qu'un détourage douteux affiché quand même.
+    const bw = baseImage.naturalWidth || baseImage.width;
+    const bh = baseImage.naturalHeight || baseImage.height;
+    // Cadre de départ : un rectangle aux proportions d'une carte, centré.
+    const gw = Math.min(bw * 0.7, ((bh * 0.7) / CARD_RATIO_GUESS));
+    const gh = gw * CARD_RATIO_GUESS;
+    const gx = (bw - gw) / 2;
+    const gy = (bh - gh) / 2;
+    return {
+      image: null,
+      quality: null,
+      cropSource: {
+        image: baseImage,
+        quad: [
+          { x: gx, y: gy },
+          { x: gx + gw, y: gy },
+          { x: gx + gw, y: gy + gh },
+          { x: gx, y: gy + gh },
+        ],
+      },
+      uncertain: true,
+      resolution,
+      sourceHash,
+    };
+  }
   // La carte sort déjà droite et bord à bord : la repasser au redressement ou
   // au recentrage pixel ne ferait que la dégrader.
   const straightened = local.image;
@@ -93,7 +132,26 @@ async function runPipeline(
   const quality = cachedQuality ?? combineQuality(sharpness, resolution, framing, framed.issue);
   if (!cachedQuality && sourceHash) writeQualityCache(sourceHash, quality);
 
-  return { image: straightened, quality, cropSource: { image: baseImage, quad } };
+  return { image: straightened, quality, cropSource: { image: baseImage, quad }, resolution, sourceHash };
+}
+
+/**
+ * Note de qualité calculée APRÈS un cadrage posé à la main : la détection
+ * automatique n'ayant rien donné, on n'avait pas de quadrilatère sur lequel
+ * mesurer la netteté ni le cadrage. Maintenant on l'a.
+ */
+export function qualityFromQuad(
+  photo: HTMLImageElement,
+  quad: Corner[],
+  resolution: number,
+  sourceHash?: string | null
+): QualityResult {
+  const w = photo.naturalWidth || photo.width;
+  const h = photo.naturalHeight || photo.height;
+  const framed = computeFramingScore(quad, w, h);
+  const quality = combineQuality(computeSharpnessScore(photo, quad), resolution, framed.score, framed.issue);
+  if (sourceHash) writeQualityCache(sourceHash, quality);
+  return quality;
 }
 
 export function ProcessScreen({ sourceBlob, onComplete, onRetake }: ProcessScreenProps) {
@@ -116,7 +174,7 @@ export function ProcessScreen({ sourceBlob, onComplete, onRetake }: ProcessScree
         }
         const result = await pipeline;
         if (cancelled) return;
-        onComplete(result.image, result.quality, result.cropSource);
+        onComplete(result);
       } catch (e) {
         if (cancelled) return;
         let m = "Le traitement a échoué.";

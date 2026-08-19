@@ -2,16 +2,19 @@
 
 import { useEffect, useRef, useState } from "react";
 import { autoDetectBounds, type Corner } from "@/lib/wizard/image-utils";
-import { rectifyCard } from "@/lib/wizard/card-geometry";
+import { rectifyCard, refineQuadByGradient } from "@/lib/wizard/card-geometry";
 import type { CropSource } from "./ProcessScreen";
 
 interface CropScreenProps {
-  /** La carte déjà détourée — ce qu'on garde si le vendeur ne touche à rien. */
-  image: HTMLImageElement;
+  /** La carte déjà détourée — ce qu'on garde si le vendeur ne touche à rien.
+   *  Null quand la détection a échoué : c'est alors à lui de poser le cadre. */
+  image: HTMLImageElement | null;
   /** La photo d'origine + les coins détectés, pour pouvoir tout rejouer. */
   cropSource: CropSource | null;
+  /** Vrai quand on n'a pas su trouver la carte et qu'on le dit franchement. */
+  uncertain?: boolean;
   title: string;
-  onApply: (result: HTMLImageElement) => void;
+  onApply: (result: HTMLImageElement, quad: Corner[]) => void;
   onRetake: () => void;
 }
 
@@ -42,17 +45,18 @@ function looksLikeACard(q: Corner[], photoW: number, photoH: number): boolean {
   return Math.abs(area) / 2 >= photoW * photoH * 0.02;
 }
 
-export function CropScreen({ image, cropSource, title, onApply, onRetake }: CropScreenProps) {
+export function CropScreen({ image, cropSource, uncertain, title, onApply, onRetake }: CropScreenProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // On travaille sur la photo D'ORIGINE quand on l'a : tirer une poignée vers
   // l'extérieur doit pouvoir aller RECHERCHER de la carte que la détection
   // aurait manquée. Sur l'image détourée, au-delà du contour, il n'y a plus
   // que du vide — les poignées y étaient prisonnières du cadre automatique
   // (défaut signalé par Remy le 19 août 2026).
-  const stageImage = cropSource?.image ?? image;
+  const stageImage = cropSource?.image ?? image!;
   const detected = cropSource?.quad ?? null;
-  const [corners, setCorners] = useState<Corner[]>(() => detected ?? autoDetectBounds(image));
-  const [manual, setManual] = useState(false);
+  const [corners, setCorners] = useState<Corner[]>(() => detected ?? autoDetectBounds(image!));
+  // Détection ratée : on ouvre d'emblée les poignées, c'est là qu'est le travail.
+  const [manual, setManual] = useState(!!uncertain);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const scaleRef = useRef(1);
@@ -163,8 +167,8 @@ export function CropScreen({ image, cropSource, title, onApply, onRetake }: Crop
     setError(null);
 
     // Rien n'a bougé : on garde le détourage déjà calculé, au pixel près.
-    if (detected && sameCorners(corners, detected)) {
-      onApply(image);
+    if (image && detected && sameCorners(corners, detected)) {
+      onApply(image, detected);
       return;
     }
 
@@ -179,7 +183,13 @@ export function CropScreen({ image, cropSource, title, onApply, onRetake }: Crop
       // (ni coins arrondis inventés, ni éclats effacés).
       setBusy(true);
       try {
-        onApply(await rectifyCard(cropSource.image, corners));
+        // Le cadre posé à la main est repassé par la MÊME recherche fine que la
+        // détection automatique : le vendeur place les 4 coins à peu près, et
+        // les bords sont recalés au pixel sur la vraie arête, éclats et coins
+        // écornés compris. Corridor de recherche plus étroit qu'en automatique
+        // — il est déjà tout près, on ne veut pas que le cadre lui échappe.
+        const refined = refineQuadByGradient(cropSource.image, corners, 0.03);
+        onApply(await rectifyCard(cropSource.image, refined), refined);
       } catch {
         setError("Ce cadre ne ressemble pas à une carte. Reprends les 4 coins, ou reviens au découpage automatique.");
       } finally {
@@ -190,6 +200,7 @@ export function CropScreen({ image, cropSource, title, onApply, onRetake }: Crop
 
     // Chemin de repli (pas de photo d'origine disponible) : découpe au
     // quadrilatère tracé, sans redressement.
+    if (!image) return;
     const c = corners;
     const minX = Math.min(c[0].x, c[1].x, c[2].x, c[3].x);
     const maxX = Math.max(c[0].x, c[1].x, c[2].x, c[3].x);
@@ -211,7 +222,7 @@ export function CropScreen({ image, cropSource, title, onApply, onRetake }: Crop
     ctx2.clip();
     ctx2.drawImage(image, 0, 0);
     const res = new Image();
-    res.onload = () => onApply(res);
+    res.onload = () => onApply(res, corners);
     res.src = out.toDataURL("image/png");
   }
 
@@ -221,17 +232,20 @@ export function CropScreen({ image, cropSource, title, onApply, onRetake }: Crop
         {title}
       </div>
       <div className="screen-sub" style={{ textAlign: "center" }}>
-        Le cadre doit suivre les bords de la carte, coins compris.
+        {uncertain
+          ? "Je n'ai pas réussi à trouver les bords tout seul. Place les 4 coins à peu près : je m'occupe du réglage fin."
+          : "Le cadre doit suivre les bords de la carte, coins compris."}
       </div>
       <div className="crop-toolbar">
         <button
           className={`crop-tool${!manual ? " active" : ""}`}
           onClick={() => {
-            setCorners(detected ?? autoDetectBounds(image));
+            setCorners(detected ?? autoDetectBounds(image!));
             setError(null);
             setManual(false);
           }}
           type="button"
+          disabled={!!uncertain}
         >
           <i className="ti ti-wand" /> Auto
         </button>
@@ -252,7 +266,7 @@ export function CropScreen({ image, cropSource, title, onApply, onRetake }: Crop
         {error
           ? error
           : manual
-            ? "Fais glisser les 4 poignées — tu peux les emmener au-delà du cadre détecté."
+            ? "Fais glisser les 4 poignées — pas besoin d'être précis, les bords sont recalés à la validation."
             : "Découpage automatique. Si un bord est mordu, passe par « Ajuster les coins »."}
       </div>
       <div className="stack-actions">

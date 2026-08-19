@@ -33,6 +33,8 @@ const PAD_RATIO = 0.05;
 const MAX_BITE_RATIO = 0.07;
 /** Débord maximal accepté vers l'extérieur : carte gondolée, bord bombé. */
 const MAX_BULGE_RATIO = 0.02;
+/** Marche de luminosité minimale pour croire à un bord quand la couleur ne dit rien. */
+const EDGE_MIN_STEP = 10;
 
 /** Droite sous forme (a,b,c) avec a·x + b·y = c, (a,b) unitaire. */
 interface Line {
@@ -207,6 +209,264 @@ export function fitCardQuad(mask: Uint8Array, w: number, h: number): Pt[] | null
     if (Math.abs(cos) > 0.26) return null; // > ~15° d'écart à l'angle droit
   }
   return quad;
+}
+
+/* ------------------------------------------------------------------ *
+ *  Affinage des 4 bords par MARCHE DE LUMINOSITÉ, avec vote sur toute
+ *  la longueur du côté.
+ * ------------------------------------------------------------------ */
+
+/** Recherche vers l'extérieur, en fraction du petit côté de la carte. */
+const REFINE_OUT_RATIO = 0.06;
+/** Correction vers l'intérieur, volontairement faible : la piste issue du
+ *  masque sous-estime presque toujours la carte, jamais l'inverse. */
+const REFINE_IN_RATIO = 0.015;
+/** Nombre de points de mesure répartis le long d'un côté. */
+const REFINE_SAMPLES = 160;
+/** Marche minimale (sur 255) pour qu'un bord soit crédible. */
+const REFINE_MIN_STEP = 4;
+
+interface EdgeCandidate {
+  /** Décalage perpendiculaire par rapport à la droite de départ (négatif = vers l'extérieur). */
+  t: number;
+  /** Force de la marche, en niveaux de gris. */
+  score: number;
+}
+
+/** Luminance échantillonnée en sous-pixel (bilinéaire). */
+function sampleLum(lum: Float32Array, w: number, h: number, x: number, y: number): number {
+  if (x < 0 || y < 0 || x > w - 2 || y > h - 2) return NaN;
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  const fx = x - x0;
+  const fy = y - y0;
+  const i = y0 * w + x0;
+  const top = lum[i] * (1 - fx) + lum[i + 1] * fx;
+  const bot = lum[i + w] * (1 - fx) + lum[i + w + 1] * fx;
+  return top * (1 - fy) + bot * fy;
+}
+
+function medianOf(a: number[]): number {
+  if (!a.length) return 0;
+  const s = [...a].sort((p, q) => p - q);
+  return s[s.length >> 1];
+}
+
+/**
+ * Profil de « force de bord » le long d'un côté, offset par offset.
+ *
+ * Pour chaque décalage perpendiculaire, on mesure la marche de luminosité en
+ * une centaine de points répartis sur le côté, et on en prend la MÉDIANE.
+ * C'est tout le principe : un vrai bord de carte est une marche qui se répète
+ * sur toute la longueur, alors qu'un reflet, une poussière ou le grain du
+ * capteur ne se répètent nulle part. Un liseré argenté à peine plus sombre que
+ * la table donne un signal faible en un point — mais massif une fois qu'un
+ * millier de points disent la même chose.
+ */
+function edgeProfile(
+  lum: Float32Array,
+  w: number,
+  h: number,
+  p0: Pt,
+  p1: Pt,
+  tMin: number,
+  tMax: number
+): { t: number; score: number }[] {
+  const dx = p1.x - p0.x;
+  const dy = p1.y - p0.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 8) return [];
+  const ux = dx / len;
+  const uy = dy / len;
+  // Normale sortante pour un quadrilatère parcouru TL→TR→BR→BL (y vers le bas).
+  const nx = uy;
+  const ny = -ux;
+
+  const out: { t: number; score: number }[] = [];
+  for (let t = tMin; t <= tMax; t += 0.5) {
+    const steps: number[] = [];
+    for (let s = 0; s < REFINE_SAMPLES; s++) {
+      // On saute les extrémités : ce sont les coins, arrondis ou écornés.
+      const f = 0.08 + (s / (REFINE_SAMPLES - 1)) * 0.84;
+      const bx = p0.x + ux * len * f + nx * t;
+      const by = p0.y + uy * len * f + ny * t;
+      const a = sampleLum(lum, w, h, bx + nx * 1.5, by + ny * 1.5);
+      const b = sampleLum(lum, w, h, bx - nx * 1.5, by - ny * 1.5);
+      if (!Number.isNaN(a) && !Number.isNaN(b)) steps.push(Math.abs(a - b));
+    }
+    if (steps.length > REFINE_SAMPLES * 0.5) out.push({ t, score: medianOf(steps) });
+  }
+  return out;
+}
+
+/** Les meilleurs sommets du profil, séparés d'au moins `minGap` pixels. */
+function topPeaks(profile: { t: number; score: number }[], count: number, minGap: number): EdgeCandidate[] {
+  const peaks: EdgeCandidate[] = [];
+  for (let i = 1; i < profile.length - 1; i++) {
+    if (profile[i].score >= profile[i - 1].score && profile[i].score > profile[i + 1].score) {
+      peaks.push({ t: profile[i].t, score: profile[i].score });
+    }
+  }
+  peaks.sort((a, b) => b.score - a.score);
+  const kept: EdgeCandidate[] = [];
+  for (const p of peaks) {
+    if (kept.length >= count) break;
+    if (kept.every((k) => Math.abs(k.t - p.t) >= minGap)) kept.push(p);
+  }
+  return kept.length ? kept : [{ t: 0, score: 0 }];
+}
+
+/** Droite passant par `p` et dirigée par `d`, sous forme a·x + b·y = c. */
+function lineFrom(p: Pt, dx: number, dy: number): Line {
+  const len = Math.hypot(dx, dy) || 1;
+  const a = -dy / len;
+  const b = dx / len;
+  return { a, b, c: a * p.x + b * p.y };
+}
+
+/**
+ * Repositionne les 4 bords du quadrilatère sur les vraies arêtes de la carte.
+ *
+ * POURQUOI. Jusqu'ici un pixel n'appartenait à la carte que si sa COULEUR
+ * différait du fond. Mesuré sur le Zébibron de Remy (19 août 2026) : le liseré
+ * argenté est à 6,5 d'écart de teinte avec la table — sous le plancher de 16 —
+ * alors qu'il est 53 niveaux PLUS SOMBRE. Notre immunité aux ombres (« plus
+ * sombre, même teinte → c'est une ombre, on ignore ») est exactement ce qui
+ * nous rendait aveugles aux bordures grises, blanches ou noires. Le masque
+ * s'arrêtait donc à la zone imprimée et le cadre rentrait DANS la carte.
+ *
+ * COMMENT. On ne demande plus « ce pixel est-il de la carte ? » mais « où est
+ * la marche de luminosité qui se répète sur tout le côté ? ». La médiane des
+ * marches le long du bord fait le tri toute seule : le grain du capteur et les
+ * reflets ne s'alignent sur rien, un bord de carte s'aligne sur mille points.
+ *
+ * ARBITRAGE. Plusieurs marches peuvent coexister (bord de la zone imprimée,
+ * bord de la carte, ligne d'ombre portée). On garde les meilleurs candidats de
+ * chaque côté et on retient la combinaison qui donne les PROPORTIONS D'UNE
+ * CARTE — le ratio départage, il n'impose rien.
+ *
+ * Ce qui sort d'ici n'est qu'une fenêtre de recherche : le contour final reste
+ * relevé point par point sur l'image redressée (voir traceSilhouette), éclats
+ * et coins écornés compris.
+ */
+export function refineQuadByGradient(img: HTMLImageElement, quad: Pt[], outRatio = REFINE_OUT_RATIO): Pt[] {
+  const w = img.naturalWidth || img.width;
+  const h = img.naturalHeight || img.height;
+  if (quad.length !== 4 || w < 32 || h < 32) return quad;
+
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return quad;
+  ctx.drawImage(img, 0, 0);
+  const d = ctx.getImageData(0, 0, w, h).data;
+  const lum = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) {
+    lum[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
+  }
+
+  const dist = (p: Pt, q: Pt) => Math.hypot(p.x - q.x, p.y - q.y);
+  const side = Math.min(
+    (dist(quad[0], quad[1]) + dist(quad[3], quad[2])) / 2,
+    (dist(quad[0], quad[3]) + dist(quad[1], quad[2])) / 2
+  );
+  // La normale des côtés pointe vers l'EXTÉRIEUR : t positif éloigne du centre.
+  // On cherche donc loin vers l'extérieur (le masque couleur sous-estime la
+  // carte quand le liseré a le ton du fond) et à peine vers l'intérieur.
+  const tMin = -Math.max(2, side * REFINE_IN_RATIO);
+  const tMax = Math.max(6, side * outRatio);
+  const minGap = Math.max(3, side * 0.012);
+
+  // Un côté = deux coins consécutifs. Ordre TL→TR→BR→BL.
+  const candidates: EdgeCandidate[][] = [];
+  for (let i = 0; i < 4; i++) {
+    const p0 = quad[i];
+    const p1 = quad[(i + 1) % 4];
+    const profile = edgeProfile(lum, w, h, p0, p1, tMin, tMax);
+    candidates.push(profile.length ? topPeaks(profile, 3, minGap) : [{ t: 0, score: 0 }]);
+  }
+
+  // Aucun bord crédible nulle part : on ne touche à rien.
+  if (candidates.every((cs) => cs[0].score < REFINE_MIN_STEP)) return quad;
+
+  const maxScore = candidates.map((cs) => Math.max(...cs.map((k) => k.score), 1e-6));
+
+  let bestQuad = quad;
+  let bestValue = -Infinity;
+  const idx = [0, 0, 0, 0];
+  const total = candidates.reduce((n, cs) => n * cs.length, 1);
+  for (let combo = 0; combo < total; combo++) {
+    let rest = combo;
+    for (let i = 0; i < 4; i++) {
+      idx[i] = rest % candidates[i].length;
+      rest = Math.floor(rest / candidates[i].length);
+    }
+    const lines: Line[] = [];
+    for (let i = 0; i < 4; i++) {
+      const p0 = quad[i];
+      const p1 = quad[(i + 1) % 4];
+      const dx = p1.x - p0.x;
+      const dy = p1.y - p0.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const t = candidates[i][idx[i]].t;
+      const moved = { x: p0.x + (dy / len) * t, y: p0.y + (-dx / len) * t };
+      lines.push(lineFrom(moved, dx, dy));
+    }
+    const corners: Pt[] = [];
+    let ok = true;
+    for (let i = 0; i < 4; i++) {
+      const p = intersect(lines[(i + 3) % 4], lines[i]);
+      if (!p) {
+        ok = false;
+        break;
+      }
+      corners.push(p);
+    }
+    if (!ok) continue;
+
+    const wq = (dist(corners[0], corners[1]) + dist(corners[3], corners[2])) / 2;
+    const hq = (dist(corners[0], corners[3]) + dist(corners[1], corners[2])) / 2;
+    if (wq < 16 || hq < 16) continue;
+    const ratio = hq / wq;
+    if (ratio < 1.15 || ratio > 1.7) continue;
+
+    // Trois juges, et il en faut bien trois.
+    //
+    // 1. La FORCE des marches, normalisée par côté.
+    // 2. Les PROPORTIONS. Poids élevé : mesuré sur le Zébibron, le bord haut
+    //    présente deux marches presque aussi franches — la limite de la zone
+    //    imprimée (23) et l'arête réelle de la carte (20). À poids faible, la
+    //    première gagnait d'un cheveu et la carte ressortait amputée de son
+    //    liseré en haut seulement.
+    // 3. La COHÉRENCE des quatre décalages. Le ratio contraint la forme, pas la
+    //    position : une combinaison qui prend l'arête réelle à droite et la
+    //    limite d'impression à gauche donne un rectangle aux bonnes proportions,
+    //    simplement décalé — c'est exactement ce qui s'est produit au premier
+    //    essai. Or un liseré fait la MÊME LARGEUR sur les quatre côtés : les
+    //    quatre décalages doivent donc se ressembler. C'est ce juge-là qui
+    //    ancre le rectangle au bon endroit.
+    //
+    // Aucun des trois n'invente quoi que ce soit : ils départagent des arêtes
+    // réellement mesurées. Le contour final, lui, reste relevé point par point.
+    let strength = 0;
+    let tMinSel = Infinity;
+    let tMaxSel = -Infinity;
+    for (let i = 0; i < 4; i++) {
+      const cand = candidates[i][idx[i]];
+      strength += cand.score / maxScore[i];
+      if (cand.t < tMinSel) tMinSel = cand.t;
+      if (cand.t > tMaxSel) tMaxSel = cand.t;
+    }
+    const spread = (tMaxSel - tMinSel) / side;
+    const value = strength - 25 * Math.abs(ratio / CARD_RATIO - 1) - 30 * spread;
+    if (value > bestValue) {
+      bestValue = value;
+      bestQuad = corners;
+    }
+  }
+
+  return bestQuad;
 }
 
 /** Homographie envoyant le rectangle destination (w×h) sur le quadrilatère source. */
@@ -503,26 +763,51 @@ function traceSilhouette(
     const threshold = Math.max(18, median(peaks) * 0.4);
 
     const border = new Float32Array(lines);
+    const prof = new Float32Array(depth); // luminance le long du balayage
     for (let line = 0; line < lines; line++) {
       let found = -1;
       let prev = 0;
       for (let step = start; step < depth; step++) {
         const p = read(line, step);
-        const v = valid[p] ? bgDistance(d, p * 4, bg[0], bg[1], bg[2]) : 0;
-        if (v > threshold) {
+        const ok = valid[p] === 1;
+        prof[step] = ok ? 0.299 * d[p * 4] + 0.587 * d[p * 4 + 1] + 0.114 * d[p * 4 + 2] : NaN;
+        const v = ok ? bgDistance(d, p * 4, bg[0], bg[1], bg[2]) : 0;
+        if (found < 0 && v > threshold) {
           // Deux pixels d'affilée : un pixel isolé est du bruit, pas un bord.
           const q = read(line, Math.min(depth - 1, step + 1));
           const v2 = valid[q] ? bgDistance(d, q * 4, bg[0], bg[1], bg[2]) : 0;
           if (v2 > threshold) {
             const t = v > prev ? (threshold - prev) / (v - prev) : 0;
             found = step - 1 + Math.min(1, Math.max(0, t));
-            break;
           }
         }
         prev = v;
       }
-      // Rien trouvé (côté hors cadre, fond trop proche de la carte) : on s'en
-      // remet à la droite ajustée, jamais au fond.
+
+      // La couleur n'a rien vu : bord argenté, blanc ou noir sur un fond du
+      // même ton. On cherche alors la MARCHE DE LUMINOSITÉ la plus franche du
+      // couloir. La fenêtre est étroite et déjà centrée sur le bord (les
+      // droites ont été recalées par refineQuadByGradient), donc la marche la
+      // plus forte est bien l'arête de la carte — et les creux d'un éclat
+      // restent relevés au lieu d'être remplacés par une ligne droite.
+      if (found < 0) {
+        let bestStep = -1;
+        let bestGrad = 0;
+        for (let step = start + 1; step < depth - 1; step++) {
+          const a = prof[step + 1];
+          const b = prof[step - 1];
+          if (Number.isNaN(a) || Number.isNaN(b)) continue;
+          const g = Math.abs(a - b);
+          if (g > bestGrad) {
+            bestGrad = g;
+            bestStep = step;
+          }
+        }
+        if (bestStep >= 0 && bestGrad > EDGE_MIN_STEP) found = bestStep;
+      }
+
+      // Toujours rien (côté hors cadre, fond indiscernable) : on s'en remet à
+      // la droite ajustée, jamais au fond.
       border[line] = found < 0 ? pad : found;
     }
     despeckle(border);

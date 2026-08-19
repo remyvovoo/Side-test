@@ -21,6 +21,8 @@ interface ExportScreenProps {
   description: string;
   onDescriptionChange: (text: string) => void;
   onDownloadClick: () => void;
+  /** Fin de parcours : ranger la carte dans « Mes cartes ». Absent hors compte. */
+  onFinish?: () => void;
   isDownloading: boolean;
   onEdit: () => void;
   onNewCard: () => void;
@@ -66,6 +68,7 @@ export function ExportScreen({
   description,
   onDescriptionChange,
   onDownloadClick,
+  onFinish,
   isDownloading,
   onEdit,
   onNewCard,
@@ -188,17 +191,41 @@ export function ExportScreen({
           <span>Qualité max</span>
         </div>
       </div>
-      <button
-        className="btn btn-primary"
-        onClick={onDownloadClick}
-        disabled={selectedCount === 0 || isDownloading}
-        type="button"
-      >
-        <i className="ti ti-download" /> {isDownloading ? "Préparation du ZIP…" : "Télécharger le ZIP"}
-      </button>
+      {/* Le parcours se termine sur « Terminé », pas sur un téléchargement
+          (Remy, 19 août 2026) : la carte est rangée dans « Mes cartes », et
+          le téléchargement devient une option parmi d'autres. Cardshot cesse
+          ainsi d'être un générateur de fichiers pour devenir l'endroit où le
+          vendeur range ses cartes — ce qui donne enfin son sens à l'onglet.
+          Hors compte, il n'y a nulle part où ranger : le téléchargement
+          reprend la première place. */}
+      {onFinish ? (
+        <>
+          <button className="btn btn-primary" onClick={onFinish} type="button">
+            <i className="ti ti-check" /> Terminé
+          </button>
+          <button
+            className="btn btn-ghost"
+            style={{ marginTop: 8 }}
+            onClick={onDownloadClick}
+            disabled={selectedCount === 0 || isDownloading}
+            type="button"
+          >
+            <i className="ti ti-download" /> {isDownloading ? "Préparation du ZIP…" : "Télécharger le ZIP"}
+          </button>
+        </>
+      ) : (
+        <button
+          className="btn btn-primary"
+          onClick={onDownloadClick}
+          disabled={selectedCount === 0 || isDownloading}
+          type="button"
+        >
+          <i className="ti ti-download" /> {isDownloading ? "Préparation du ZIP…" : "Télécharger le ZIP"}
+        </button>
+      )}
       <div className="btn-row">
         <button className="btn btn-ghost btn-sm" onClick={onEdit} type="button">
-          <i className="ti ti-pencil" /> Modifier
+          <i className="ti ti-arrow-left" /> Revenir au studio
         </button>
         <button className="btn btn-ghost btn-sm" onClick={onNewCard} type="button">
           <i className="ti ti-plus" /> Nouvelle carte

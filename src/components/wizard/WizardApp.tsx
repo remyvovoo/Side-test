@@ -483,6 +483,23 @@ export function WizardApp({
     }
   }
 
+  /**
+   * Fin de parcours (espace connecté) : la carte est rangée dans « Mes
+   * cartes » et on y emmène le vendeur. La sauvegarde a déjà eu lieu en
+   * arrivant au studio, mais on la rejoue pour capturer la description telle
+   * qu'il vient de l'éditer — et pour rattraper un premier enregistrement qui
+   * aurait échoué.
+   */
+  async function handleFinish() {
+    try {
+      await saveCardToAccount(description);
+    } catch (e) {
+      console.error("[cardshot] save on finish failed", e);
+    }
+    showToast("Carte enregistrée");
+    router.push("/dashboard/cartes");
+  }
+
   function handleDownloadClick() {
     // Connecté : on a déjà son e-mail, pas de fenêtre de collecte.
     if (embedded) {
@@ -618,6 +635,7 @@ export function WizardApp({
           description={description}
           onDescriptionChange={setDescription}
           onDownloadClick={handleDownloadClick}
+          onFinish={embedded ? handleFinish : undefined}
           isDownloading={isDownloading}
           onEdit={() => go("customize")}
           onNewCard={restartFlow}

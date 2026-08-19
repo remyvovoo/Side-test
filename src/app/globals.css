@@ -253,9 +253,13 @@ input[type=range]::-moz-range-thumb { width: 17px; height: 17px; border-radius: 
 
 .shots-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 1rem; }
 @media (min-width: 900px) { .shots-grid { grid-template-columns: repeat(3,1fr); } }
-.shot { border-radius: 12px; overflow: hidden; position: relative; cursor: pointer; border: 2px solid transparent; transition: border-color .15s; }
+/* Vignette carrée pour garder une grille régulière, mais le canvas garde SON
+   ratio : un gros plan portrait s'affiche entier, sans bandes blanches
+   ajoutées dans l'image exportée. Le vide éventuel est celui de la vignette,
+   pas celui du fichier. */
+.shot { border-radius: 12px; overflow: hidden; position: relative; cursor: pointer; border: 2px solid transparent; transition: border-color .15s; aspect-ratio: 1; display: flex; align-items: center; justify-content: center; }
 .shot.checked { border-color: var(--accent); }
-.shot canvas { width: 100%; display: block; aspect-ratio: 1; }
+.shot canvas { max-width: 100%; max-height: 100%; display: block; }
 .shot-check { position: absolute; top: 8px; right: 8px; width: 24px; height: 24px; border-radius: 50%; background: rgba(10,8,20,.7); border: 1.5px solid rgba(255,255,255,.3); display: flex; align-items: center; justify-content: center; font-size: 13px; color: transparent; backdrop-filter: blur(4px); }
 .shot.checked .shot-check { background: var(--accent); border-color: var(--accent); color: #fff; }
 .shot-name { position: absolute; bottom: 0; left: 0; right: 0; padding: 14px 8px 6px; background: linear-gradient(transparent,rgba(0,0,0,.85)); color: #fff; font-size: 10.5px; font-weight: 600; }

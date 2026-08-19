@@ -505,3 +505,11 @@ button.opt-card:focus-visible, button.theme-chip:focus-visible { outline: 2px so
 
 /* Conseil de format sous les boutons du logo (page « Mon studio »). */
 .dash-panel .logo-hint { margin: 8px 0 0; font-size: 11.5px; line-height: 1.45; color: rgba(255,255,255,.5); }
+
+/* Champ de mot de passe avec œil de révélation : saisir à l'aveugle est la
+   première source d'erreur à l'inscription, surtout sur mobile où le clavier
+   bascule entre lettres, chiffres et symboles. */
+.auth-field .pw-wrap { position: relative; display: block; }
+.auth-field .pw-wrap input { width: 100%; padding-right: 44px; }
+.auth-field .pw-eye { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 17px; border-radius: 8px; }
+.auth-field .pw-eye:hover { color: var(--text); }

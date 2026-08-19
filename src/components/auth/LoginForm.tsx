@@ -1,5 +1,6 @@
 "use client";
 
+import { PasswordField } from "./PasswordField";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
@@ -53,20 +54,16 @@ export function LoginForm() {
               autoComplete="email"
             />
           </div>
-          <div className="auth-field">
-            <label htmlFor="password">{t.passwordLabel}</label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              autoComplete="current-password"
-            />
-            <a className="auth-forgot-link" onClick={() => router.push("/forgot-password")}>
-              {t.forgotLink}
-            </a>
-          </div>
+          <PasswordField
+            id="password"
+            label={t.passwordLabel}
+            value={password}
+            onChange={setPassword}
+            autoComplete="current-password"
+          />
+          <a className="auth-forgot-link" onClick={() => router.push("/forgot-password")}>
+            {t.forgotLink}
+          </a>
           <button className="btn btn-primary" type="submit" disabled={submitting} style={{ marginTop: 8 }}>
             {t.submit}
           </button>

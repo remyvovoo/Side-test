@@ -1,5 +1,6 @@
 "use client";
 
+import { PasswordField } from "./PasswordField";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signIn } from "next-auth/react";
@@ -295,15 +296,12 @@ export function OnboardingFlow() {
               autoComplete="email"
             />
           </div>
-          <div className="auth-field">
-            <label htmlFor="password">{t.passwordLabel}</label>
-            <input
+          <div>
+            <PasswordField
               id="password"
-              type="password"
-              placeholder={t.passwordPlaceholder}
+              label={t.passwordLabel}
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
+              onChange={setPassword}
               autoComplete="new-password"
             />
             <div className="auth-rules">

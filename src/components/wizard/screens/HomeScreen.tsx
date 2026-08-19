@@ -37,7 +37,7 @@ export function HomeScreen({ onStart }: HomeScreenProps) {
             Une photo. <em>Six visuels studio</em> prêts à publier.
           </h1>
           <p>
-            Photographie ta carte, choisis son présentoir. Cardshot génère le recto, le verso et quatre angles —
+            Photographie ta carte. Cardshot génère le recto, le verso et quatre angles —
             comme dans un vrai studio produit.
           </p>
           <div style={{ marginTop: "1.5rem" }}>
@@ -62,7 +62,7 @@ export function HomeScreen({ onStart }: HomeScreenProps) {
           <div className="how-step">
             <i className="ti ti-box" />
             <div>2. Présentoir</div>
-            <small>Pied acrylique ou boîtier</small>
+            <small>Pied acrylique, lumière, décor</small>
           </div>
           <div className="how-step">
             <i className="ti ti-download" />

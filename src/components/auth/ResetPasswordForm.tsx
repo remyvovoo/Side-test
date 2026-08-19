@@ -1,5 +1,6 @@
 "use client";
 
+import { PasswordField } from "./PasswordField";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useLocale } from "@/components/i18n/LocaleProvider";
@@ -78,14 +79,12 @@ export function ResetPasswordForm({ token }: { token: string }) {
         {error && <div className="auth-error">{error}</div>}
 
         <form onSubmit={handleSubmit}>
-          <div className="auth-field">
-            <label htmlFor="password">{t.passwordLabel}</label>
-            <input
+          <div>
+            <PasswordField
               id="password"
-              type="password"
+              label={t.passwordLabel}
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
+              onChange={setPassword}
               autoComplete="new-password"
             />
             <div className="auth-rules">

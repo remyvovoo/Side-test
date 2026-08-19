@@ -853,6 +853,36 @@ function traceSilhouette(
       // la droite ajustée, jamais au fond.
       border[line] = found < 0 ? pad : found;
     }
+    // Rattrapage des lignes qui ont manqué l'arête.
+    //
+    // Chaque ligne décide seule, et sur un liseré clair posé sur un fond clair
+    // la marche est parfois trop faible pour être vue : la ligne file alors
+    // jusqu'à la frontière de la zone imprimée, 30 px plus loin. Mesuré sur le
+    // Zébibron : 175 colonnes sur 620 en haut, 99 en bas, avec une cinquantaine
+    // de sauts brusques — d'où la bande noire striée que Remy voyait en haut du
+    // rendu, alors que le cadre, lui, était juste.
+    //
+    // Le juge qui manquait : REGARDER CE QU'IL Y A ENTRE les deux positions.
+    // Si c'est du fond, la ligne a raison — c'est un éclat, et un éclat doit
+    // être conservé. Si c'est de la matière, la ligne s'est trompée et l'arête
+    // est plus loin dehors. La luminosité tranche là où la teinte ne dit rien.
+    const consensus = median(Array.from(border));
+    const bgLum = 0.299 * bg[0] + 0.587 * bg[1] + 0.114 * bg[2];
+    const tol = Math.max(3, Math.round(Math.min(cardW, cardH) * 0.006));
+    for (let line = 0; line < lines; line++) {
+      if (border[line] <= consensus + tol) continue;
+      const p = read(line, Math.round((consensus + border[line]) / 2));
+      if (!valid[p]) {
+        border[line] = consensus;
+        continue;
+      }
+      const lum = 0.299 * d[p * 4] + 0.587 * d[p * 4 + 1] + 0.114 * d[p * 4 + 2];
+      const isCard =
+        Math.abs(lum - bgLum) > EDGE_MIN_STEP ||
+        bgDistance(d, p * 4, bg[0], bg[1], bg[2]) > threshold;
+      if (isCard) border[line] = consensus;
+    }
+
     despeckle(border);
     // Tolérance : 3 px ou 0,4 % du petit côté — en dessous, c'est le grain du
     // capteur. Longueur maximale rabotée : 4 % du bord, très au-delà d'une

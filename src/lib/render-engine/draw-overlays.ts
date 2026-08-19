@@ -80,10 +80,58 @@ export function wallLogoRect(
  * physiquement juste pour une enseigne au fond de la pièce.
  */
 export const LOGO_BOUNDS = { minX: 0.04, maxX: 0.96, minY: 0.04, maxY: 0.96 };
-export const clampLogoPos = (p: { x: number; y: number }) => ({
-  x: Math.min(LOGO_BOUNDS.maxX, Math.max(LOGO_BOUNDS.minX, p.x)),
-  y: Math.min(LOGO_BOUNDS.maxY, Math.max(LOGO_BOUNDS.minY, p.y)),
-});
+
+/** Rectangle interdit au logo, en fraction du cadre. */
+export interface Box {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+/**
+ * Marge de respect autour de la carte, en fraction du cadre. Le logo ne peut
+ * ni chevaucher l'objet ni le frôler : Remy veut « une bordure autour de
+ * l'objet qui empêche au logo de naviguer autour ».
+ */
+export const CARD_KEEPOUT = 0.045;
+
+/**
+ * Ramène le logo dans le cadre, puis hors de la zone de la carte s'il y
+ * entre — en le repoussant du côté le plus proche, pour que le geste reste
+ * naturel : on longe l'obstacle au lieu d'être renvoyé à l'autre bout.
+ */
+export function clampLogoPos(
+  p: { x: number; y: number },
+  block?: { w: number; h: number },
+  keepOut?: Box | null
+): { x: number; y: number } {
+  let x = Math.min(LOGO_BOUNDS.maxX, Math.max(LOGO_BOUNDS.minX, p.x));
+  let y = Math.min(LOGO_BOUNDS.maxY, Math.max(LOGO_BOUNDS.minY, p.y));
+  if (!keepOut || !block) return { x, y };
+
+  const hw = block.w / 2;
+  const hh = block.h / 2;
+  const overlapX = x + hw > keepOut.x0 && x - hw < keepOut.x1;
+  const overlapY = y + hh > keepOut.y0 && y - hh < keepOut.y1;
+  if (!overlapX || !overlapY) return { x, y };
+
+  // Quatre sorties possibles ; on prend la moins coûteuse.
+  const outs = [
+    { d: x + hw - keepOut.x0, ax: "x" as const, v: keepOut.x0 - hw },
+    { d: keepOut.x1 - (x - hw), ax: "x" as const, v: keepOut.x1 + hw },
+    { d: y + hh - keepOut.y0, ax: "y" as const, v: keepOut.y0 - hh },
+    { d: keepOut.y1 - (y - hh), ax: "y" as const, v: keepOut.y1 + hh },
+  ].sort((a, b) => a.d - b.d);
+  for (const o of outs) {
+    // Une sortie qui projetterait le logo hors du cadre n'en est pas une.
+    if (o.v < 0.02 || o.v > 0.98) continue;
+    if (o.ax === "x") x = o.v;
+    else y = o.v;
+    break;
+  }
+  return { x, y };
+}
 
 /**
  * Le logo du vendeur, POSÉ SUR LE MUR de la scène.
@@ -114,7 +162,8 @@ export function drawWallLogo(
   logoImage: CanvasImageSource | null,
   logoText: string,
   pos: { x: number; y: number } = { x: 0.5, y: 0.14 },
-  userScale = 1
+  userScale = 1,
+  keepOut: Box | null = null
 ) {
   // Rien du vendeur : c'est le filigrane Cardshot qui prend la place, mais il
   // se dessine en fin de rendu (voir renderShot) puisqu'il passe DEVANT la
@@ -126,7 +175,9 @@ export function drawWallLogo(
   const s = (W / 1000) * userScale;
   const markH = MARK_H * s;
   const aspect = logoImage ? logoAspectOf(logoImage) : 0;
-  const { x: x0, y: y0, w: blockW, markW } = wallLogoRect(W, H, aspect, txt, clampLogoPos(pos), userScale);
+  const raw = wallLogoRect(W, H, aspect, txt, pos, userScale);
+  const safe = clampLogoPos(pos, { w: raw.w / W, h: raw.h / H }, keepOut);
+  const { x: x0, y: y0, w: blockW, markW } = wallLogoRect(W, H, aspect, txt, safe, userScale);
   const gap = txt && markW ? 18 * s : 0;
 
   // Luminosité du mur là où le logo va se poser : c'est elle qui décide si le

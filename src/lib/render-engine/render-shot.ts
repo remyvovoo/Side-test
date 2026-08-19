@@ -10,7 +10,7 @@ import {
   applyPhotoGrade,
   applyGrain,
 } from "./draw-effects";
-import { drawWallLogo, drawCardshotWatermark, drawInfoTag } from "./draw-overlays";
+import { drawWallLogo, drawCardshotWatermark, drawInfoTag, CARD_KEEPOUT, type Box } from "./draw-overlays";
 import type { RenderRequest } from "./types";
 
 // ---- Plaques photographiques -------------------------------------------------
@@ -66,6 +66,14 @@ function drawPlateCover(ctx: CanvasRenderingContext2D, plate: HTMLImageElement, 
  * onto the given canvas. This is the only entry point screens should call —
  * everything above is an implementation detail of "how", not "what".
  */
+/**
+ * Zone occupée par la carte au dernier rendu de ce canvas. L'interface de
+ * placement du logo la relit pour interdire exactement la même zone que le
+ * moteur, sans avoir à refaire sa géométrie de son côté.
+ */
+const lastCardBox = new WeakMap<HTMLCanvasElement, Box>();
+export const getCardBox = (canvas: HTMLCanvasElement): Box | null => lastCardBox.get(canvas) ?? null;
+
 export function renderShot(canvas: HTMLCanvasElement, request: RenderRequest): void {
   lastRequest.set(canvas, request);
   const W = request.size || 1000;
@@ -84,9 +92,6 @@ export function renderShot(canvas: HTMLCanvasElement, request: RenderRequest): v
   if (plate) drawPlateCover(ctx, plate, W, H);
   else drawBg(ctx, W, H, theme, request.halo);
 
-  // Le logo appartient au décor : il se pose sur le mur juste après lui, donc
-  // AVANT la carte, son ombre et son reflet — qui passeront devant.
-  drawWallLogo(ctx, W, H, request.logoImage, request.logoText, request.logoPos, request.logoScale);
 
   const img = shot.face === "verso" ? request.versoImage : request.rectoImage;
   if (!img) return;
@@ -118,6 +123,21 @@ export function renderShot(canvas: HTMLCanvasElement, request: RenderRequest): v
   // la carte (avec son ombre et son reflet) pour poser son bas sur la ligne
   // de pose de la plaque.
   const plateDy = plate ? (theme.plateGround ?? 0.78) * H - Math.max(q[2].y, q[3].y) : 0;
+
+  // Zone de respect autour de la carte : le logo n'a le droit ni de la
+  // chevaucher ni de la frôler. Elle est calculée sur la géométrie réelle de
+  // la carte (reflet et décalage de plaque compris), jamais estimée.
+  const cardBox = {
+    x0: Math.min(q[0].x, q[3].x) / W - CARD_KEEPOUT,
+    x1: Math.max(q[1].x, q[2].x) / W + CARD_KEEPOUT,
+    y0: (Math.min(q[0].y, q[1].y) + plateDy) / H - CARD_KEEPOUT,
+    y1: (Math.max(q[2].y, q[3].y) + plateDy) / H + CARD_KEEPOUT,
+  };
+  lastCardBox.set(canvas, cardBox);
+
+  // Le logo appartient au décor : il se pose sur le mur AVANT la carte, son
+  // ombre et son reflet — qui passeront devant.
+  drawWallLogo(ctx, W, H, request.logoImage, request.logoText, request.logoPos, request.logoScale, cardBox);
 
   if (!plate) {
     // Podium de présentation : dessiné avant l'objet, il pose la scène.

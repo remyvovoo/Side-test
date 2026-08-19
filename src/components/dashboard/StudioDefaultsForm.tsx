@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { renderShot, THEMES, MOUNTS } from "@/lib/render-engine";
+import { getCardBox } from "@/lib/render-engine/render-shot";
 import { wallLogoRect, clampLogoPos, logoAspectOf } from "@/lib/render-engine/draw-overlays";
 import { demoCard } from "@/lib/wizard/demo-card";
 import { loadImage } from "@/lib/wizard/image-utils";
@@ -139,8 +140,15 @@ export function StudioDefaultsForm({ initial }: { initial: StudioDefaults }) {
     const c = e.currentTarget;
     const p = toCanvas(e);
     if (g.mode === "move") {
-      // Bande murale seulement : ni au sol, ni collé à la carte (Remy).
-      setLogoPos(clampLogoPos({ x: (p.x - g.dx) / c.width, y: (p.y - g.dy) / c.height }));
+      // Placement libre, sauf sur la carte et sa bordure de respect.
+      const box = wallLogoRect(c.width, c.height, logoImage ? logoAspectOf(logoImage) : 0, logoText, logoPos, logoScale);
+      setLogoPos(
+        clampLogoPos(
+          { x: (p.x - g.dx) / c.width, y: (p.y - g.dy) / c.height },
+          { w: box.w / c.width, h: box.h / c.height },
+          getCardBox(c)
+        )
+      );
     } else {
       const box = wallLogoRect(c.width, c.height, logoImage ? logoAspectOf(logoImage) : 0, logoText, logoPos, logoScale);
       const d = Math.hypot(p.x - (box.x + box.w / 2), p.y - (box.y + box.h / 2));

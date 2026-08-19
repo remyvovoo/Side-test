@@ -495,3 +495,6 @@ button.opt-card:focus-visible, button.theme-chip:focus-visible { outline: 2px so
 .admin-table td { padding: 12px 16px; border-top: .5px solid var(--border); color: var(--text-secondary); }
 .admin-role { font-size: 10.5px; font-weight: 600; padding: 3px 9px; border-radius: 20px; background: var(--accent-light); color: var(--accent); }
 .admin-empty { text-align: center; padding: 40px 0; color: var(--text-muted); font-size: 13px; }
+
+/* Conseil de format sous les boutons du logo (page « Mon studio »). */
+.dash-panel .logo-hint { margin: 8px 0 0; font-size: 11.5px; line-height: 1.45; color: rgba(255,255,255,.5); }

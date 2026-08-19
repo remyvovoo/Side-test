@@ -1,6 +1,13 @@
 import { roundRect } from "./geometry";
 import type { CardInfo } from "./types";
 
+/** Rapport largeur/hauteur d'un logo, quelle que soit sa nature. */
+export function logoAspectOf(img: CanvasImageSource): number {
+  const w = (img as HTMLImageElement).naturalWidth || (img as HTMLCanvasElement).width || 1;
+  const h = (img as HTMLImageElement).naturalHeight || (img as HTMLCanvasElement).height || 1;
+  return w / h;
+}
+
 /** Hauteur du logo mural et hauteur de sa ligne de texte, pour W = 1000. */
 const MARK_H = 62;
 const TEXT_H = 30;
@@ -37,24 +44,40 @@ export function drawCardshotWatermark(ctx: CanvasRenderingContext2D, W: number, 
 export function wallLogoRect(
   W: number,
   H: number,
-  hasImage: boolean,
+  /** Rapport largeur/hauteur du logo importé ; 0 s'il n'y en a pas. */
+  logoAspect: number,
   logoText: string,
   pos: { x: number; y: number },
   userScale: number
-): { x: number; y: number; w: number; h: number } {
+): { x: number; y: number; w: number; h: number; markW: number } {
   const s = (W / 1000) * userScale;
   const markH = MARK_H * s;
-  const gap = logoText && hasImage ? 18 * s : 0;
+  // Le logo garde SES proportions. Avant, il était forcé dans un carré : un
+  // logo large s'y retrouvait rogné (signalé par Remy le 19 août 2026).
+  const markW = logoAspect > 0 ? markH * logoAspect : 0;
+  const gap = logoText && markW ? 18 * s : 0;
   let tw = 0;
   if (logoText) {
     const m = document.createElement("canvas").getContext("2d")!;
     m.font = `600 ${TEXT_H * s}px -apple-system,sans-serif`;
     tw = m.measureText(logoText).width;
   }
-  const w = (hasImage ? markH : 0) + gap + tw;
+  const w = markW + gap + tw;
   // `pos` désigne le CENTRE du bloc : c'est ce qu'on manipule à la souris.
-  return { x: pos.x * W - w / 2, y: pos.y * H - markH / 2, w, h: markH };
+  return { x: pos.x * W - w / 2, y: pos.y * H - markH / 2, w, h: markH, markW };
 }
+
+/**
+ * Bande du cadre où le logo mural a le droit de se trouver : le HAUT, c'est-
+ * à-dire le mur. Remy : « autour de l'objet et sous l'objet le logo ne devrait
+ * pas pouvoir s'afficher » — au sol ou collé à la carte, il cesse d'être une
+ * enseigne au fond de la pièce et redevient un autocollant.
+ */
+export const LOGO_BOUNDS = { minX: 0.08, maxX: 0.92, minY: 0.05, maxY: 0.3 };
+export const clampLogoPos = (p: { x: number; y: number }) => ({
+  x: Math.min(LOGO_BOUNDS.maxX, Math.max(LOGO_BOUNDS.minX, p.x)),
+  y: Math.min(LOGO_BOUNDS.maxY, Math.max(LOGO_BOUNDS.minY, p.y)),
+});
 
 /**
  * Le logo du vendeur, POSÉ SUR LE MUR de la scène.
@@ -96,8 +119,9 @@ export function drawWallLogo(
   const txt = logoText;
   const s = (W / 1000) * userScale;
   const markH = MARK_H * s;
-  const gap = txt && logoImage ? 18 * s : 0;
-  const { x: x0, y: y0, w: blockW } = wallLogoRect(W, H, !!logoImage, txt, pos, userScale);
+  const aspect = logoImage ? logoAspectOf(logoImage) : 0;
+  const { x: x0, y: y0, w: blockW, markW } = wallLogoRect(W, H, aspect, txt, clampLogoPos(pos), userScale);
+  const gap = txt && markW ? 18 * s : 0;
 
   // Luminosité du mur là où le logo va se poser : c'est elle qui décide si le
   // logo doit s'allumer (mur sombre) ou s'imprimer (mur clair).
@@ -117,18 +141,15 @@ export function drawWallLogo(
   const oc = off.getContext("2d")!;
   const ink = darkWall ? "#ffffff" : "#0b0a14";
 
-  if (logoImage) {
-    oc.save();
-    roundRect(oc, x0, y0, markH, markH, 14 * s);
-    oc.clip();
-    oc.drawImage(logoImage, x0, y0, markH, markH);
-    oc.restore();
-  }
+  // Aucun masque : le logo est dessiné tel quel, à ses proportions. Un PNG
+  // à fond transparent se fond donc dans le mur — d'où le conseil affiché
+  // dans « Mon studio ».
+  if (logoImage) oc.drawImage(logoImage, x0, y0, markW, markH);
   if (txt) {
     oc.font = `600 ${TEXT_H * s}px -apple-system,sans-serif`;
     oc.fillStyle = ink;
     oc.textBaseline = "middle";
-    oc.fillText(txt, x0 + (logoImage ? markH + gap : 0), y0 + markH / 2);
+    oc.fillText(txt, x0 + markW + gap, y0 + markH / 2);
   }
 
   ctx.save();

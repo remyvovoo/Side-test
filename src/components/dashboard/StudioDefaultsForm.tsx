@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { renderShot, THEMES, MOUNTS } from "@/lib/render-engine";
-import { wallLogoRect } from "@/lib/render-engine/draw-overlays";
+import { wallLogoRect, clampLogoPos, logoAspectOf } from "@/lib/render-engine/draw-overlays";
 import { demoCard } from "@/lib/wizard/demo-card";
 import { loadImage } from "@/lib/wizard/image-utils";
 import { EMPTY_CARD_INFO } from "@/lib/wizard/types";
@@ -72,6 +72,32 @@ export function StudioDefaultsForm({ initial }: { initial: StudioDefaults }) {
       cardInfo: EMPTY_CARD_INFO,
       size: 640,
     });
+    // Cadre de sélection — APERÇU SEULEMENT. Ce canvas ne part jamais à
+    // l'export : il sert à faire comprendre que le logo s'attrape et se
+    // redimensionne, comme le fait CarBox avec ses poignées.
+    if (!logoImage && !logoText) return;
+    const c = previewRef.current;
+    const g = c.getContext("2d")!;
+    const b = wallLogoRect(c.width, c.height, logoImage ? logoAspectOf(logoImage) : 0, logoText, logoPos, logoScale);
+    const pad = 8;
+    g.save();
+    g.strokeStyle = "#a78bfa";
+    g.lineWidth = 1.5;
+    g.setLineDash([5, 4]);
+    g.strokeRect(b.x - pad, b.y - pad, b.w + pad * 2, b.h + pad * 2);
+    g.setLineDash([]);
+    g.fillStyle = "#a78bfa";
+    for (const [hx, hy] of [
+      [b.x - pad, b.y - pad],
+      [b.x + b.w + pad, b.y - pad],
+      [b.x - pad, b.y + b.h + pad],
+      [b.x + b.w + pad, b.y + b.h + pad],
+    ]) {
+      g.beginPath();
+      g.arc(hx, hy, 5, 0, 7);
+      g.fill();
+    }
+    g.restore();
   }, [themeIndex, mountIndex, reflect, halo, logoImage, logoText, logoPos, logoScale]);
 
   /**
@@ -94,7 +120,7 @@ export function StudioDefaultsForm({ initial }: { initial: StudioDefaults }) {
     if (!hasSellerLogo) return;
     const c = e.currentTarget;
     const p = toCanvas(e);
-    const box = wallLogoRect(c.width, c.height, !!logoImage, logoText, logoPos, logoScale);
+    const box = wallLogoRect(c.width, c.height, logoImage ? logoAspectOf(logoImage) : 0, logoText, logoPos, logoScale);
     const cx = box.x + box.w / 2;
     const cy = box.y + box.h / 2;
     const grab = Math.max(18, box.h * 0.45);
@@ -113,10 +139,10 @@ export function StudioDefaultsForm({ initial }: { initial: StudioDefaults }) {
     const c = e.currentTarget;
     const p = toCanvas(e);
     if (g.mode === "move") {
-      const clamp = (v: number) => Math.min(0.97, Math.max(0.03, v));
-      setLogoPos({ x: clamp((p.x - g.dx) / c.width), y: clamp((p.y - g.dy) / c.height) });
+      // Bande murale seulement : ni au sol, ni collé à la carte (Remy).
+      setLogoPos(clampLogoPos({ x: (p.x - g.dx) / c.width, y: (p.y - g.dy) / c.height }));
     } else {
-      const box = wallLogoRect(c.width, c.height, !!logoImage, logoText, logoPos, logoScale);
+      const box = wallLogoRect(c.width, c.height, logoImage ? logoAspectOf(logoImage) : 0, logoText, logoPos, logoScale);
       const d = Math.hypot(p.x - (box.x + box.w / 2), p.y - (box.y + box.h / 2));
       setLogoScale(Math.min(3, Math.max(0.3, (g.scale0 * d) / g.d0)));
     }
@@ -268,6 +294,10 @@ export function StudioDefaultsForm({ initial }: { initial: StudioDefaults }) {
               </button>
             </div>
           </div>
+          <p className="logo-hint">
+            Un PNG à fond transparent donne le meilleur résultat : le logo épouse le mur au lieu
+            d&apos;apparaître dans un rectangle.
+          </p>
           <input
             ref={logoInputRef}
             type="file"

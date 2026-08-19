@@ -6,6 +6,8 @@ export type CardFacts = Pick<CardInfo, "name" | "number" | "series" | "language"
 export type AnalyzeErrorCode =
   | "unauthorized"
   | "not_configured"
+  /** Clé présente mais refusée par l'API (invalide, révoquée, sans crédit). */
+  | "misconfigured"
   | "quota_exceeded"
   | "overloaded"
   | "refused"
@@ -67,6 +69,8 @@ export async function analyzeCard(image: HTMLImageElement): Promise<AnalyzeCardR
         throw new AnalyzeCardError("unauthorized");
       case "service_not_configured":
         throw new AnalyzeCardError("not_configured");
+      case "service_misconfigured":
+        throw new AnalyzeCardError("misconfigured");
       case "quota_exceeded":
         throw new AnalyzeCardError("quota_exceeded", body?.limit);
       case "overloaded":

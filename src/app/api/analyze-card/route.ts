@@ -35,6 +35,25 @@ function isOverloadOrServerError(e: unknown): e is APIError {
   return e instanceof APIError && !!e.status && (e.status === 429 || e.status >= 500);
 }
 
+/** Le modèle n'accepte pas `output_config.effort` (cas de Haiku 4.5). */
+function isEffortUnsupported(e: unknown): boolean {
+  return e instanceof APIError && e.status === 400 && /effort/i.test(String(e.message));
+}
+
+/** Modèle inexistant ou indisponible pour cette clé. */
+function isModelUnavailable(e: unknown): boolean {
+  return e instanceof APIError && (e.status === 404 || (e.status === 400 && /model/i.test(String(e.message))));
+}
+
+/**
+ * Panne DURABLE, côté configuration : clé invalide, révoquée, sans crédit, ou
+ * requête refusée par l'API. Réessayer n'y changera jamais rien — le dire
+ * franchement vaut mieux qu'un « Réessaie » qui fait perdre du temps.
+ */
+function isConfigurationError(e: unknown): e is APIError {
+  return e instanceof APIError && !!e.status && (e.status === 401 || e.status === 403 || e.status === 400);
+}
+
 const BodySchema = z.object({
   // data URL JPEG produite côté navigateur (~1500 px, qualité 0.85)
   image: z
@@ -183,13 +202,14 @@ export async function POST(req: NextRequest) {
 
   const client = new Anthropic({ apiKey, maxRetries: 2 });
 
-  const visionParams = {
+  const buildParams = (withEffort: boolean) => ({
     max_tokens: 1024,
     system: buildSystemPrompt(target.label),
     output_config: {
       // Extraction courte : pas besoin de réflexion approfondie, on privilégie
-      // la latence et le coût.
-      effort: "low" as const,
+      // la latence et le coût. Tous les modèles n'acceptent pas ce paramètre
+      // (Haiku 4.5 le refuse par un 400) — d'où la variante sans.
+      ...(withEffort ? { effort: "low" as const } : {}),
       format: { type: "json_schema" as const, schema: buildFactsSchema(target.label) },
     },
     messages: [
@@ -204,34 +224,68 @@ export async function POST(req: NextRequest) {
         ],
       },
     ],
-  };
+  });
 
-  let response;
-  try {
-    // Un seul essai rapide sur le modèle principal : en cas de saturation, le
-    // ré-essayer en boucle ne sert à rien (la même capacité reste indisponible)
-    // — mieux vaut basculer tout de suite sur le modèle de repli.
-    response = await client.messages.create(
-      { model: MODEL, ...visionParams },
-      { maxRetries: 0 }
-    );
-  } catch (e) {
-    if (!isOverloadOrServerError(e)) {
-      console.error("[cardshot] analyze-card: appel Claude en échec", e);
-      return NextResponse.json({ error: "analysis_failed" }, { status: 502 });
-    }
-    console.warn(
-      `[cardshot] analyze-card: ${MODEL} saturé (${e.status}), repli sur ${FALLBACK_MODEL}`
-    );
+  /**
+   * Chaîne d'essais. Le premier passe sans ré-essai interne : quand une
+   * capacité est saturée, la retenter en boucle ne fait que rallonger l'attente
+   * — mieux vaut changer de modèle tout de suite.
+   *
+   * Les variantes « sans effort » ne sont pas décoratives : un modèle qui
+   * refuse ce paramètre répond 400, c'est-à-dire une panne DÉFINITIVE que
+   * l'ancien code présentait au vendeur comme « Réessaie ». Elles suppriment
+   * toute une classe d'échecs qui ne pouvaient pas se réparer d'eux-mêmes.
+   */
+  const attempts: { model: string; effort: boolean; retries: number }[] = [
+    { model: MODEL, effort: true, retries: 0 },
+    { model: MODEL, effort: false, retries: 0 },
+    { model: FALLBACK_MODEL, effort: true, retries: 1 },
+    { model: FALLBACK_MODEL, effort: false, retries: 0 },
+  ];
+
+  let response: Anthropic.Message | null = null;
+  let lastError: unknown = null;
+  for (const attempt of attempts) {
+    // Inutile de retenter sans `effort` si ce n'est pas lui qui a fâché l'API.
+    if (!attempt.effort && !isEffortUnsupported(lastError)) continue;
     try {
-      response = await client.messages.create({ model: FALLBACK_MODEL, ...visionParams });
-    } catch (e2) {
-      console.error("[cardshot] analyze-card: repli aussi en échec", e2);
-      if (isOverloadOrServerError(e2)) {
-        return NextResponse.json({ error: "overloaded" }, { status: 503 });
+      response = await client.messages.create(
+        { model: attempt.model, ...buildParams(attempt.effort) },
+        { maxRetries: attempt.retries }
+      );
+      if (lastError) {
+        console.warn(
+          `[cardshot] analyze-card: réussi avec ${attempt.model}${attempt.effort ? "" : " (sans effort)"} après un premier échec`
+        );
       }
-      return NextResponse.json({ error: "analysis_failed" }, { status: 502 });
+      break;
+    } catch (e) {
+      lastError = e;
+      const status = e instanceof APIError ? e.status : "?";
+      console.warn(
+        `[cardshot] analyze-card: ${attempt.model}${attempt.effort ? "" : " (sans effort)"} → ${status} ${
+          e instanceof Error ? e.message.slice(0, 200) : String(e)
+        }`
+      );
+      // Une clé invalide, révoquée ou sans crédit échouera pareil sur tous les
+      // modèles : on ne fait pas patienter le vendeur pour rien.
+      if (isConfigurationError(e) && !isEffortUnsupported(e) && !isModelUnavailable(e)) break;
     }
+  }
+
+  if (!response) {
+    if (isOverloadOrServerError(lastError)) {
+      return NextResponse.json({ error: "overloaded" }, { status: 503 });
+    }
+    if (isConfigurationError(lastError)) {
+      console.error(
+        "[cardshot] analyze-card: PANNE DE CONFIGURATION — clé Anthropic invalide, sans crédit, ou modèle refusé.",
+        lastError
+      );
+      return NextResponse.json({ error: "service_misconfigured" }, { status: 503 });
+    }
+    console.error("[cardshot] analyze-card: appel Claude en échec", lastError);
+    return NextResponse.json({ error: "analysis_failed" }, { status: 502 });
   }
 
   // Un refus (classificateurs de sécurité) renvoie un 200 avec un contenu vide :

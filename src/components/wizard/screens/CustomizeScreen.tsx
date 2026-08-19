@@ -34,6 +34,8 @@ interface CustomizeScreenProps {
   /** Identification des infos par l'IA (absente si non disponible). */
   aiStatus?: "idle" | "running" | "done" | "error";
   aiMessage?: string;
+  /** Faux sur une panne durable : proposer « Relancer » serait un piège. */
+  aiRetryable?: boolean;
   onRunAi?: () => void;
 }
 
@@ -63,6 +65,7 @@ export function CustomizeScreen({
   onSaveAsDefaults,
   aiStatus = "idle",
   aiMessage = "",
+  aiRetryable = true,
   onRunAi,
 }: CustomizeScreenProps) {
   const mainCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -200,9 +203,11 @@ export function CustomizeScreen({
                     <>
                       <i className={`ti ${aiStatus === "error" ? "ti-alert-triangle" : "ti-sparkles"}`} />
                       <span>{aiMessage || "Laisse l'IA lire le nom, le numéro et la série sur ta photo."}</span>
-                      <button className="cs-ai-btn" onClick={onRunAi} type="button">
-                        {aiStatus === "idle" ? "Identifier" : "Relancer"}
-                      </button>
+                      {aiRetryable && (
+                        <button className="cs-ai-btn" onClick={onRunAi} type="button">
+                          {aiStatus === "idle" ? "Identifier" : "Relancer"}
+                        </button>
+                      )}
                     </>
                   )}
                 </div>

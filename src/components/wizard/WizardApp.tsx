@@ -40,6 +40,9 @@ function aiErrorMessage(e: unknown): string {
         return "Le service d'IA est saturé. Réessaie dans quelques secondes.";
       case "not_configured":
         return "Identification IA pas encore configurée.";
+      // Panne durable : réessayer n'y changera rien, autant le dire.
+      case "misconfigured":
+        return "L'identification est indisponible (accès au service refusé). Inutile de réessayer — remplis les champs à la main, on s'en occupe.";
       case "unauthorized":
         return "Session expirée — reconnecte-toi.";
       case "refused":
@@ -145,6 +148,7 @@ export function WizardApp({
   // Identification des infos de la carte par l'IA (chantier C).
   const [aiStatus, setAiStatus] = useState<AiStatus>("idle");
   const [aiMessage, setAiMessage] = useState("");
+  const [aiRetryable, setAiRetryable] = useState(true);
   const aiBusyRef = useRef(false);
   // Une seule analyse automatique par carte ; les suivantes sont manuelles.
   const aiAutoDoneRef = useRef(false);
@@ -210,6 +214,7 @@ export function WizardApp({
     savedCardIdRef.current = null;
     setAiStatus("idle");
     setAiMessage("");
+    setAiRetryable(true);
     aiAutoDoneRef.current = false;
     startFlow();
   }
@@ -224,6 +229,7 @@ export function WizardApp({
     aiBusyRef.current = true;
     setAiStatus("running");
     setAiMessage("");
+    setAiRetryable(true);
     try {
       const { facts, enrichedOnline } = await analyzeCard(image);
       const foundSomething = Object.values(facts).some((v) => v.trim());
@@ -240,6 +246,12 @@ export function WizardApp({
       console.error("[cardshot] identification IA", e);
       setAiStatus("error");
       setAiMessage(aiErrorMessage(e));
+      // Un bouton « Relancer » qui ne peut pas aboutir est un piège : sur une
+      // panne durable (clé refusée, quota d'essai épuisé, service non
+      // configuré), on le retire au lieu de faire perdre du temps.
+      setAiRetryable(
+        !(e instanceof AnalyzeCardError && ["misconfigured", "not_configured", "quota_exceeded"].includes(e.code))
+      );
     } finally {
       aiBusyRef.current = false;
     }
@@ -672,6 +684,7 @@ export function WizardApp({
           onSaveAsDefaults={embedded ? saveStudioAsDefaults : undefined}
           aiStatus={aiStatus}
           aiMessage={aiMessage}
+          aiRetryable={aiRetryable}
           onRunAi={isAuthenticated ? () => void identifyCard(rectoImage) : undefined}
         />
       )}

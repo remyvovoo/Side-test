@@ -4,8 +4,57 @@ import type { CardInfo } from "./types";
 /** Hauteur du logo mural et hauteur de sa ligne de texte, pour W = 1000. */
 const MARK_H = 62;
 const TEXT_H = 30;
-/** Position du bloc sur le mur, en fraction de la hauteur du cadre. */
-const WALL_Y = 0.085;
+
+/**
+ * Filigrane Cardshot, en bas à droite. C'est NOTRE marque, pas celle du
+ * vendeur : elle reste discrète, à une place fixe, et disparaît dès que le
+ * vendeur importe son propre logo — les deux ne cohabitent jamais.
+ */
+export function drawCardshotWatermark(ctx: CanvasRenderingContext2D, W: number, H: number) {
+  const s = W / 1000;
+  const txt = "cardshot";
+  ctx.save();
+  ctx.font = `600 ${26 * s}px -apple-system,sans-serif`;
+  ctx.textBaseline = "middle";
+  ctx.textAlign = "right";
+  const x = W - 34 * s;
+  const y = H - 34 * s;
+  // Léger halo sombre pour rester lisible sur un décor clair comme sur un
+  // décor sombre, sans le cadre opaque de l'ancienne pastille.
+  ctx.shadowColor = "rgba(0,0,0,0.55)";
+  ctx.shadowBlur = 10 * s;
+  ctx.fillStyle = "rgba(255,255,255,0.82)";
+  ctx.fillText(txt, x, y);
+  ctx.restore();
+}
+
+/**
+ * Encombrement du logo vendeur dans le cadre, en pixels. Sert au rendu ET à
+ * l'interface qui permet de le déplacer et de le redimensionner : les deux
+ * doivent placer le bloc exactement au même endroit, sans quoi on attrape à
+ * côté de ce qu'on voit.
+ */
+export function wallLogoRect(
+  W: number,
+  H: number,
+  hasImage: boolean,
+  logoText: string,
+  pos: { x: number; y: number },
+  userScale: number
+): { x: number; y: number; w: number; h: number } {
+  const s = (W / 1000) * userScale;
+  const markH = MARK_H * s;
+  const gap = logoText && hasImage ? 18 * s : 0;
+  let tw = 0;
+  if (logoText) {
+    const m = document.createElement("canvas").getContext("2d")!;
+    m.font = `600 ${TEXT_H * s}px -apple-system,sans-serif`;
+    tw = m.measureText(logoText).width;
+  }
+  const w = (hasImage ? markH : 0) + gap + tw;
+  // `pos` désigne le CENTRE du bloc : c'est ce qu'on manipule à la souris.
+  return { x: pos.x * W - w / 2, y: pos.y * H - markH / 2, w, h: markH };
+}
 
 /**
  * Le logo du vendeur, POSÉ SUR LE MUR de la scène.
@@ -34,18 +83,21 @@ export function drawWallLogo(
   W: number,
   H: number,
   logoImage: CanvasImageSource | null,
-  logoText: string
+  logoText: string,
+  pos: { x: number; y: number } = { x: 0.5, y: 0.14 },
+  userScale = 1
 ) {
-  const txt = logoText || "cardshot";
-  const s = W / 1000;
-  const markH = MARK_H * s;
-  const gap = 18 * s;
+  // Rien du vendeur : c'est le filigrane Cardshot qui prend la place, mais il
+  // se dessine en fin de rendu (voir renderShot) puisqu'il passe DEVANT la
+  // carte. Les deux marques ne s'affichent JAMAIS ensemble (Remy, 19 août
+  // 2026) : le logo importé REMPLACE le nôtre, et le retirer nous le rend.
+  if (!logoImage && !logoText) return;
 
-  ctx.font = `600 ${TEXT_H * s}px -apple-system,sans-serif`;
-  const tw = ctx.measureText(txt).width;
-  const blockW = (logoImage ? markH + gap : 0) + tw;
-  const x0 = (W - blockW) / 2;
-  const y0 = H * WALL_Y;
+  const txt = logoText;
+  const s = (W / 1000) * userScale;
+  const markH = MARK_H * s;
+  const gap = txt && logoImage ? 18 * s : 0;
+  const { x: x0, y: y0, w: blockW } = wallLogoRect(W, H, !!logoImage, txt, pos, userScale);
 
   // Luminosité du mur là où le logo va se poser : c'est elle qui décide si le
   // logo doit s'allumer (mur sombre) ou s'imprimer (mur clair).
@@ -72,10 +124,12 @@ export function drawWallLogo(
     oc.drawImage(logoImage, x0, y0, markH, markH);
     oc.restore();
   }
-  oc.font = `600 ${TEXT_H * s}px -apple-system,sans-serif`;
-  oc.fillStyle = ink;
-  oc.textBaseline = "middle";
-  oc.fillText(txt, x0 + (logoImage ? markH + gap : 0), y0 + markH / 2);
+  if (txt) {
+    oc.font = `600 ${TEXT_H * s}px -apple-system,sans-serif`;
+    oc.fillStyle = ink;
+    oc.textBaseline = "middle";
+    oc.fillText(txt, x0 + (logoImage ? markH + gap : 0), y0 + markH / 2);
+  }
 
   ctx.save();
   ctx.globalCompositeOperation = darkWall ? "screen" : "multiply";

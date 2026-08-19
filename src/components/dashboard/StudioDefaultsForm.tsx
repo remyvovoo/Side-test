@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { renderShot, THEMES, MOUNTS } from "@/lib/render-engine";
+import { wallLogoRect } from "@/lib/render-engine/draw-overlays";
 import { demoCard } from "@/lib/wizard/demo-card";
 import { loadImage } from "@/lib/wizard/image-utils";
 import { EMPTY_CARD_INFO } from "@/lib/wizard/types";
@@ -14,6 +15,9 @@ export interface StudioDefaults {
   halo: number;
   logoText: string;
   logoImage: string; // data URL, vide = logo Cardshot
+  logoX: number;
+  logoY: number;
+  logoScale: number;
 }
 
 export function StudioDefaultsForm({ initial }: { initial: StudioDefaults }) {
@@ -30,6 +34,8 @@ export function StudioDefaultsForm({ initial }: { initial: StudioDefaults }) {
   const [logoText, setLogoText] = useState(initial.logoText);
   const [logoDataUrl, setLogoDataUrl] = useState(initial.logoImage);
   const [logoImage, setLogoImage] = useState<HTMLImageElement | null>(null);
+  const [logoPos, setLogoPos] = useState({ x: initial.logoX, y: initial.logoY });
+  const [logoScale, setLogoScale] = useState(initial.logoScale);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState(false);
@@ -61,10 +67,64 @@ export function StudioDefaultsForm({ initial }: { initial: StudioDefaults }) {
       halo,
       logoImage,
       logoText,
+      logoPos,
+      logoScale,
       cardInfo: EMPTY_CARD_INFO,
       size: 640,
     });
-  }, [themeIndex, mountIndex, reflect, halo, logoImage, logoText]);
+  }, [themeIndex, mountIndex, reflect, halo, logoImage, logoText, logoPos, logoScale]);
+
+  /**
+   * Déplacement et redimensionnement du logo directement dans l'aperçu, à la
+   * façon de CarBox : on attrape le bloc pour le déplacer, sa poignée en bas
+   * à droite pour l'agrandir. Sans logo vendeur, il n'y a rien à manipuler —
+   * le filigrane Cardshot a une place fixe, en bas à droite.
+   */
+  const hasSellerLogo = !!logoImage || !!logoText;
+  const dragRef = useRef<{ mode: "move" | "resize"; dx: number; dy: number; scale0: number; d0: number } | null>(null);
+
+  /** Coordonnées du pointeur dans le repère du canvas (et non de l'écran). */
+  function toCanvas(e: React.PointerEvent<HTMLCanvasElement>) {
+    const c = e.currentTarget;
+    const r = c.getBoundingClientRect();
+    return { x: ((e.clientX - r.left) / r.width) * c.width, y: ((e.clientY - r.top) / r.height) * c.height };
+  }
+
+  function handlePointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
+    if (!hasSellerLogo) return;
+    const c = e.currentTarget;
+    const p = toCanvas(e);
+    const box = wallLogoRect(c.width, c.height, !!logoImage, logoText, logoPos, logoScale);
+    const cx = box.x + box.w / 2;
+    const cy = box.y + box.h / 2;
+    const grab = Math.max(18, box.h * 0.45);
+    const onHandle = Math.hypot(p.x - (box.x + box.w), p.y - (box.y + box.h)) <= grab;
+    const inside = p.x >= box.x - grab && p.x <= box.x + box.w + grab && p.y >= box.y - grab && p.y <= box.y + box.h + grab;
+    if (!onHandle && !inside) return;
+    c.setPointerCapture(e.pointerId);
+    dragRef.current = onHandle
+      ? { mode: "resize", dx: 0, dy: 0, scale0: logoScale, d0: Math.max(1, Math.hypot(p.x - cx, p.y - cy)) }
+      : { mode: "move", dx: p.x - cx, dy: p.y - cy, scale0: logoScale, d0: 1 };
+  }
+
+  function handlePointerMove(e: React.PointerEvent<HTMLCanvasElement>) {
+    const g = dragRef.current;
+    if (!g) return;
+    const c = e.currentTarget;
+    const p = toCanvas(e);
+    if (g.mode === "move") {
+      const clamp = (v: number) => Math.min(0.97, Math.max(0.03, v));
+      setLogoPos({ x: clamp((p.x - g.dx) / c.width), y: clamp((p.y - g.dy) / c.height) });
+    } else {
+      const box = wallLogoRect(c.width, c.height, !!logoImage, logoText, logoPos, logoScale);
+      const d = Math.hypot(p.x - (box.x + box.w / 2), p.y - (box.y + box.h / 2));
+      setLogoScale(Math.min(3, Math.max(0.3, (g.scale0 * d) / g.d0)));
+    }
+  }
+
+  function endDrag() {
+    dragRef.current = null;
+  }
 
   function handleLogoFile(file: File | null) {
     if (!file) return;
@@ -98,6 +158,9 @@ export function StudioDefaultsForm({ initial }: { initial: StudioDefaults }) {
           defaultHalo: halo,
           defaultLogoText: logoText,
           defaultLogoImage: logoDataUrl,
+          defaultLogoX: logoPos.x,
+          defaultLogoY: logoPos.y,
+          defaultLogoScale: logoScale,
         }),
       });
       if (!res.ok) throw new Error();
@@ -113,8 +176,19 @@ export function StudioDefaultsForm({ initial }: { initial: StudioDefaults }) {
   return (
     <div className="dash-studio">
       <div className="dash-studio-preview">
-        <canvas ref={previewRef} />
-        <span className="dash-studio-preview-note">Aperçu en direct avec la carte de démonstration</span>
+        <canvas
+          ref={previewRef}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+          style={{ touchAction: hasSellerLogo ? "none" : undefined, cursor: hasSellerLogo ? "move" : undefined }}
+        />
+        <span className="dash-studio-preview-note">
+          {hasSellerLogo
+            ? "Glisse ton logo pour le placer, tire son coin bas droit pour l’agrandir."
+            : "Aperçu en direct avec la carte de démonstration"}
+        </span>
       </div>
 
       <div className="dash-studio-controls">
@@ -179,12 +253,18 @@ export function StudioDefaultsForm({ initial }: { initial: StudioDefaults }) {
                 className="btn btn-ghost btn-sm"
                 style={{ flex: 1 }}
                 onClick={() => {
+                  // Retirer son logo rend sa place au filigrane Cardshot, en
+                  // bas à droite — et remet le placement à zéro pour le jour
+                  // où un autre logo sera importé.
                   setLogoDataUrl("");
                   setLogoText("");
+                  setLogoPos({ x: 0.5, y: 0.14 });
+                  setLogoScale(1);
                 }}
                 type="button"
+                disabled={!logoDataUrl && !logoText}
               >
-                <i className="ti ti-restore" /> Défaut
+                <i className="ti ti-trash" /> Retirer mon logo
               </button>
             </div>
           </div>

@@ -15,6 +15,8 @@ interface CustomizeScreenProps {
   halo: number;
   logoImage: HTMLImageElement | null;
   logoText: string;
+  logoPos?: { x: number; y: number };
+  logoScale?: number;
   cardInfo: CardInfo;
   shotIndex: number;
   onMountChange: (i: number) => void;
@@ -44,6 +46,8 @@ export function CustomizeScreen({
   halo,
   logoImage,
   logoText,
+  logoPos,
+  logoScale,
   cardInfo,
   shotIndex,
   onMountChange,
@@ -82,10 +86,12 @@ export function CustomizeScreen({
       halo,
       logoImage,
       logoText,
+      logoPos,
+      logoScale,
       cardInfo,
       size: 1000,
     });
-  }, [currentShot, rectoImage, versoImage, mountIndex, themeIndex, reflect, halo, logoImage, logoText, cardInfo]);
+  }, [currentShot, rectoImage, versoImage, mountIndex, themeIndex, reflect, halo, logoImage, logoText, logoPos, logoScale, cardInfo]);
 
   function cycleShot(dir: number) {
     const n = shots.length;

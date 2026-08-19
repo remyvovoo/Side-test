@@ -13,6 +13,9 @@ export default async function StudioPage() {
       defaultHalo: true,
       defaultLogoText: true,
       defaultLogoImage: true,
+      defaultLogoX: true,
+      defaultLogoY: true,
+      defaultLogoScale: true,
     },
   });
 
@@ -31,6 +34,9 @@ export default async function StudioPage() {
           halo: user?.defaultHalo ?? 0.7,
           logoText: user?.defaultLogoText ?? "",
           logoImage: user?.defaultLogoImage ?? "",
+          logoX: user?.defaultLogoX ?? 0.5,
+          logoY: user?.defaultLogoY ?? 0.14,
+          logoScale: user?.defaultLogoScale ?? 1,
         }}
       />
     </div>

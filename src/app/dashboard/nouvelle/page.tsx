@@ -14,6 +14,9 @@ export default async function NewCardPage() {
       defaultHalo: true,
       defaultLogoText: true,
       defaultLogoImage: true,
+      defaultLogoX: true,
+      defaultLogoY: true,
+      defaultLogoScale: true,
       sellerBoilerplate: true,
       titleTemplate: true,
       descriptionTemplate: true,
@@ -33,6 +36,8 @@ export default async function NewCardPage() {
       initialHalo={user?.defaultHalo ?? 0.7}
       initialLogoText={user?.defaultLogoText ?? ""}
       initialLogoImageUrl={user?.defaultLogoImage ?? ""}
+      initialLogoPos={{ x: user?.defaultLogoX ?? 0.5, y: user?.defaultLogoY ?? 0.14 }}
+      initialLogoScale={user?.defaultLogoScale ?? 1}
       initialSellerBoilerplate={user?.sellerBoilerplate ?? ""}
       titleTemplate={user?.titleTemplate ?? ""}
       descriptionTemplate={user?.descriptionTemplate ?? ""}

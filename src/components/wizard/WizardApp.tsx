@@ -63,6 +63,8 @@ interface WizardAppProps {
   initialReflect?: number;
   initialHalo?: number;
   initialLogoText?: string;
+  initialLogoPos?: { x: number; y: number };
+  initialLogoScale?: number;
   initialLogoImageUrl?: string;
 }
 
@@ -77,6 +79,8 @@ export function WizardApp({
   initialReflect = 0.5,
   initialHalo = 0.7,
   initialLogoText = "",
+  initialLogoPos = { x: 0.5, y: 0.14 },
+  initialLogoScale = 1,
   initialLogoImageUrl = "",
 }: WizardAppProps) {
   const router = useRouter();
@@ -95,6 +99,9 @@ export function WizardApp({
   const [halo, setHalo] = useState(initialHalo);
   const [logoImage, setLogoImage] = useState<HTMLImageElement | null>(null);
   const [logoText, setLogoText] = useState(initialLogoText);
+  // Placement du logo vendeur, réglé dans « Mon studio » et repris tel quel ici.
+  const [logoPos] = useState(initialLogoPos);
+  const [logoScale] = useState(initialLogoScale);
 
   // Logo par défaut du compte (data URL) → image utilisable par le moteur.
   useEffect(() => {
@@ -370,6 +377,9 @@ export function WizardApp({
           defaultHalo: halo,
           defaultLogoText: logoText,
           defaultLogoImage: logoDataUrl,
+          defaultLogoX: logoPos.x,
+          defaultLogoY: logoPos.y,
+          defaultLogoScale: logoScale,
         }),
       });
       if (!res.ok) throw new Error();
@@ -390,6 +400,8 @@ export function WizardApp({
       halo,
       logoImage,
       logoText,
+      logoPos,
+      logoScale,
       cardInfo,
     };
   }
@@ -571,6 +583,8 @@ export function WizardApp({
           halo={halo}
           logoImage={logoImage}
           logoText={logoText}
+          logoPos={logoPos}
+          logoScale={logoScale}
           cardInfo={cardInfo}
           shotIndex={shotIndex}
           onMountChange={setMountIndex}

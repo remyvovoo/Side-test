@@ -65,6 +65,13 @@ export interface RenderRequest {
   halo: number;
   logoImage: CanvasImageSource | null;
   logoText: string;
+  /**
+   * Placement du logo VENDEUR sur le mur : centre du bloc en fraction du
+   * cadre, et facteur de taille. Sans logo vendeur, c'est le filigrane
+   * Cardshot qui s'affiche en bas à droite et ces valeurs ne servent pas.
+   */
+  logoPos?: { x: number; y: number };
+  logoScale?: number;
   cardInfo: CardInfo;
   size: number;
 }

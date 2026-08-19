@@ -38,6 +38,13 @@ model User {
   defaultHalo      Float?
   defaultLogoText  String @default("")
   defaultLogoImage String @default("") // data URL du logo importé (vide = logo Cardshot)
+  // Placement du logo du VENDEUR sur le mur de la scène, en fraction du cadre
+  // (centre du bloc), et facteur de taille. Sans logo importé, c'est le
+  // filigrane Cardshot qui s'affiche, en bas à droite, et ces champs ne
+  // servent pas.
+  defaultLogoX     Float @default(0.5)
+  defaultLogoY     Float @default(0.14)
+  defaultLogoScale Float @default(1)
   // Nombre d'identifications IA déjà consommées (plafond d'essai, voir AI_ANALYSIS_LIMIT)
   aiAnalysisCount Int @default(0)
   createdAt      DateTime @default(now())

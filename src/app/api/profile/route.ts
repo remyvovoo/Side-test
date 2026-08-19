@@ -19,6 +19,11 @@ const ProfileSchema = z.object({
     .max(300_000)
     .refine((v) => v === "" || v.startsWith("data:image/"), "invalid_logo")
     .optional(),
+  // Placement du logo vendeur sur le mur : centre du bloc en fraction du
+  // cadre, et facteur de taille. Bornés pour qu'il reste toujours attrapable.
+  defaultLogoX: z.number().min(0).max(1).optional(),
+  defaultLogoY: z.number().min(0).max(1).optional(),
+  defaultLogoScale: z.number().min(0.3).max(3).optional(),
 });
 
 export async function POST(req: NextRequest) {

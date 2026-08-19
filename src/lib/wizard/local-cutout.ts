@@ -42,8 +42,18 @@ function buildMask(img: HTMLImageElement, thresholdScale: number): MaskResult | 
   ctx.drawImage(img, 0, 0, w, h);
   const d = ctx.getImageData(0, 0, w, h).data;
 
-  // 1. Couleur du fond : médiane des pixels des 4 bandes de bord (3 % du côté).
-  const band = Math.max(2, Math.round(Math.min(w, h) * 0.03));
+  // 1. Couleur du fond : médiane des pixels des QUATRE COINS de la photo.
+  //
+  // On échantillonnait auparavant les quatre bandes de bord entières. Sur une
+  // photo prise au téléphone, la carte remplit presque tout le cadre : ces
+  // bandes tombaient donc en partie SUR la carte, son bord argenté extérieur
+  // était classé comme fond, et disparaissait du détourage (signalé par Remy
+  // le 19 août 2026 — « il retire le contour gris de la carte »).
+  //
+  // Les coins sont le seul endroit dont on soit à peu près sûr : une carte
+  // est un rectangle centré, et même inclinée elle laisse ses coins libres.
+  const cw = Math.max(3, Math.round(w * 0.1));
+  const ch = Math.max(3, Math.round(h * 0.1));
   const rs: number[] = [];
   const gs: number[] = [];
   const bs: number[] = [];
@@ -53,16 +63,12 @@ function buildMask(img: HTMLImageElement, thresholdScale: number): MaskResult | 
     gs.push(d[i + 1]);
     bs.push(d[i + 2]);
   };
-  for (let x = 0; x < w; x += 2) {
-    for (let y = 0; y < band; y++) {
-      sample(x, y);
-      sample(x, h - 1 - y);
-    }
-  }
-  for (let y = 0; y < h; y += 2) {
-    for (let x = 0; x < band; x++) {
+  for (let y = 0; y < ch; y++) {
+    for (let x = 0; x < cw; x++) {
       sample(x, y);
       sample(w - 1 - x, y);
+      sample(x, h - 1 - y);
+      sample(w - 1 - x, h - 1 - y);
     }
   }
   const median = (a: number[]) => a.sort((p, q) => p - q)[Math.floor(a.length / 2)];

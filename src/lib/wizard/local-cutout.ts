@@ -296,6 +296,14 @@ export interface CutoutResult {
   image: HTMLImageElement;
   /** Vrai si la carte a été redressée géométriquement (perspective corrigée). */
   rectified: boolean;
+  /**
+   * Les 4 coins retenus, dans les coordonnées de la photo SOURCE (non détourée).
+   * L'écran de recadrage s'en sert pour rejouer la découpe sur la photo
+   * d'origine : c'est la seule façon d'aller RÉCUPÉRER de la carte quand la
+   * détection en a pris trop peu — sur l'image détourée, il n'y a plus rien
+   * à retrouver au-delà du contour.
+   */
+  quad?: Pt[];
 }
 
 export async function localRemoveBackground(
@@ -328,7 +336,7 @@ export async function localRemoveBackground(
       const sy = (img.naturalHeight || img.height) / m.h;
       const full: Pt[] = quad.map((p) => ({ x: p.x * sx, y: p.y * sy }));
       try {
-        return { image: await rectifyCard(img, full), rectified: true };
+        return { image: await rectifyCard(img, full), rectified: true, quad: full };
       } catch {
         // on retombe sur le détourage pixel ci-dessous
       }

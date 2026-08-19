@@ -1,11 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  compressImage,
-  loadImage,
-  autoDetectBounds,
-} from "@/lib/wizard/image-utils";
+import { compressImage, loadImage, type Corner } from "@/lib/wizard/image-utils";
 import { localRemoveBackground } from "@/lib/wizard/local-cutout";
 import { computeSharpnessScore, computeResolutionScore } from "@/lib/quality/analyze-photo";
 import { computeFramingScore } from "@/lib/quality/analyze-framing";
@@ -13,15 +9,26 @@ import { combineQuality } from "@/lib/quality/combine-quality";
 import { hashBlob, readQualityCache, writeQualityCache } from "@/lib/quality/quality-cache";
 import type { QualityResult } from "@/lib/quality/types";
 
+/**
+ * De quoi rejouer la découpe sur la photo d'ORIGINE depuis l'écran de
+ * recadrage : sans ça, les poignées ne peuvent que rogner davantage, jamais
+ * rattraper un bord que la détection aurait laissé de côté.
+ */
+export interface CropSource {
+  image: HTMLImageElement;
+  quad: Corner[];
+}
+
 interface ProcessScreenProps {
   sourceBlob: Blob;
-  onComplete: (cutoutImage: HTMLImageElement, quality: QualityResult) => void;
+  onComplete: (cutoutImage: HTMLImageElement, quality: QualityResult, cropSource: CropSource | null) => void;
   onRetake: () => void;
 }
 
 interface PipelineResult {
   image: HTMLImageElement;
   quality: QualityResult;
+  cropSource: CropSource | null;
 }
 
 // Déduplication : en dev, React monte les effets deux fois — les deux montages
@@ -47,12 +54,13 @@ async function runPipeline(
   const sourceHash = await hashBlob(sourceBlob);
   const cachedQuality = sourceHash ? readQualityCache(sourceHash) : null;
 
-  onMessage("Analyse de la netteté et de la résolution…");
+  onMessage("Analyse de la photo…");
   const sourceImage = await loadImage(previewUrl);
-  const sharpness = cachedQuality ? cachedQuality.sharpness : computeSharpnessScore(sourceImage);
+  // La résolution se juge sur le fichier d'origine : c'est la seule des trois
+  // mesures qui parle du fichier et non de ce qu'on en voit.
   const resolution = cachedQuality ? cachedQuality.resolution : computeResolutionScore(sourceImage);
 
-  onMessage("Compression avant envoi…");
+  onMessage("Préparation de l'image…");
   const compressed = await compressImage(sourceBlob);
 
   onMessage("Suppression du fond…");
@@ -67,20 +75,25 @@ async function runPipeline(
   // le 19 août 2026 : afficher directement « fond uni » plutôt que tenter un
   // rattrapage. Un échec nommé vaut mieux qu'un résultat douteux.
   const local = await localRemoveBackground(baseImage);
-  if (local?.rectified !== true) throw new LowContrastError();
+  if (local?.rectified !== true || !local.quad) throw new LowContrastError();
   // La carte sort déjà droite et bord à bord : la repasser au redressement ou
   // au recentrage pixel ne ferait que la dégrader.
   const straightened = local.image;
+  const quad = local.quad;
 
-  onMessage("Vérification du cadrage…");
-  // Le cadrage est mesuré AVANT recentrage : il évalue la photo d'origine.
-  const bounds = autoDetectBounds(straightened);
-  const framing = cachedQuality ? cachedQuality.framing : computeFramingScore(bounds);
+  onMessage("Vérification de la netteté et du cadrage…");
+  // Les deux mesures portent sur la photo TELLE QU'ELLE A ÉTÉ PRISE, en se
+  // servant du quadrilatère de la carte : la netteté se juge sur la carte (le
+  // fond n'a pas à être net) et le cadrage sur sa place dans le cadre. Les
+  // mesurer sur l'image redressée reviendrait à noter notre propre sortie.
+  const sharpness = cachedQuality ? cachedQuality.sharpness : computeSharpnessScore(baseImage, quad);
+  const framed = computeFramingScore(quad, baseImage.naturalWidth || baseImage.width, baseImage.naturalHeight || baseImage.height);
+  const framing = cachedQuality ? cachedQuality.framing : framed.score;
 
-  const quality = cachedQuality ?? combineQuality(sharpness, resolution, framing);
+  const quality = cachedQuality ?? combineQuality(sharpness, resolution, framing, framed.issue);
   if (!cachedQuality && sourceHash) writeQualityCache(sourceHash, quality);
 
-  return { image: straightened, quality };
+  return { image: straightened, quality, cropSource: { image: baseImage, quad } };
 }
 
 export function ProcessScreen({ sourceBlob, onComplete, onRetake }: ProcessScreenProps) {
@@ -103,7 +116,7 @@ export function ProcessScreen({ sourceBlob, onComplete, onRetake }: ProcessScree
         }
         const result = await pipeline;
         if (cancelled) return;
-        onComplete(result.image, result.quality);
+        onComplete(result.image, result.quality, result.cropSource);
       } catch (e) {
         if (cancelled) return;
         let m = "Le traitement a échoué.";

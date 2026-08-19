@@ -8,7 +8,9 @@ import type { QualityResult } from "./types";
  * l'utilisateur.
  */
 
-const STORE_KEY = "cs_quality_cache_v1";
+// v2 : netteté et cadrage sont mesurés autrement depuis le 19 août 2026 —
+// les notes mémorisées par l'ancienne formule n'ont plus de sens.
+const STORE_KEY = "cs_quality_cache_v2";
 const MAX_ENTRIES = 20;
 
 type CacheShape = Record<string, QualityResult>;

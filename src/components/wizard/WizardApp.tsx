@@ -11,7 +11,7 @@ import { SellerProfileModal } from "./SellerProfileModal";
 import { HomeScreen } from "./screens/HomeScreen";
 import { SourceScreen } from "./screens/SourceScreen";
 import { CameraScreen } from "./screens/CameraScreen";
-import { ProcessScreen } from "./screens/ProcessScreen";
+import { ProcessScreen, type CropSource } from "./screens/ProcessScreen";
 import { QualityScreen } from "./screens/QualityScreen";
 import { CropScreen } from "./screens/CropScreen";
 import { VersoScreen } from "./screens/VersoScreen";
@@ -92,6 +92,9 @@ export function WizardApp({
   const [rectoImage, setRectoImage] = useState<HTMLImageElement | null>(null);
   const [versoImage, setVersoImage] = useState<HTMLImageElement | null>(null);
   const [pendingImage, setPendingImage] = useState<HTMLImageElement | null>(null);
+  // Photo d'origine + coins détectés : l'écran de recadrage en a besoin pour
+  // pouvoir élargir la découpe, pas seulement la resserrer.
+  const [pendingCropSource, setPendingCropSource] = useState<CropSource | null>(null);
 
   const [mountIndex, setMountIndex] = useState(initialMountIndex);
   const [themeIndex, setThemeIndex] = useState(initialThemeIndex);
@@ -294,8 +297,9 @@ export function WizardApp({
     setTimeout(() => fileInputRef.current?.click(), 300);
   }
 
-  function handleProcessComplete(cutoutImage: HTMLImageElement, q: QualityResult) {
+  function handleProcessComplete(cutoutImage: HTMLImageElement, q: QualityResult, cropSource: CropSource | null) {
     setPendingImage(cutoutImage);
+    setPendingCropSource(cropSource);
     setQuality(q);
     go("quality");
   }
@@ -580,6 +584,7 @@ export function WizardApp({
       {screen === "crop" && pendingImage && (
         <CropScreen
           image={pendingImage}
+          cropSource={pendingCropSource}
           title={face === "recto" ? "Vérifie le découpage" : "Vérifie le verso"}
           onApply={handleCropApply}
           onRetake={() => go("source")}

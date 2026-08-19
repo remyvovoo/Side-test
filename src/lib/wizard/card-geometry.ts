@@ -377,6 +377,41 @@ function bgDistance(
   return Math.sqrt(cr * cr + cg * cg + cb * cb) + Math.max(0, dl) * 0.5;
 }
 
+/**
+ * Efface les SAILLIES ÉTROITES vers l'extérieur.
+ *
+ * Le balayage s'arrête au premier pixel qui n'est plus le fond. Une poussière
+ * sur la table, un éclat de lumière, une miette à deux millimètres du bord
+ * l'arrêtent donc trop tôt : tout ce qui va de cette poussière jusqu'à la
+ * carte est alors gardé, et il en sort une petite languette de fond accrochée
+ * au bord. Sur fond clair elle est presque invisible, sauf la poussière
+ * elle-même — c'est exactement ce que Remy a vu au coin haut-gauche du verso
+ * de son Mewtwo (19 août 2026).
+ *
+ * Ce qui distingue la poussière du vrai bord, ce n'est pas l'amplitude mais la
+ * LARGEUR : une carte gondolée bombe sur une longue portion du bord, une
+ * poussière tient en quelques pixels. On ne rabote donc que les saillies
+ * courtes, et JAMAIS les creux — les creux sont les éclats et les coins
+ * écornés, qui font partie de l'état que l'acheteur doit voir.
+ */
+function rejectOutwardSpikes(border: Float32Array, tolerance: number, maxRun: number): void {
+  const baseline = median(Array.from(border));
+  const limit = baseline - tolerance; // plus petit = plus vers l'extérieur
+  let i = 0;
+  while (i < border.length) {
+    if (border[i] >= limit) {
+      i++;
+      continue;
+    }
+    let j = i;
+    while (j < border.length && border[j] < limit) j++;
+    if (j - i <= maxRun) {
+      for (let k = i; k < j; k++) border[k] = baseline;
+    }
+    i = j;
+  }
+}
+
 /** Médiane glissante à 3 : efface le pixel isolé, garde le vrai défaut. */
 function despeckle(border: Float32Array): void {
   const src = Float32Array.from(border);
@@ -491,6 +526,14 @@ function traceSilhouette(
       border[line] = found < 0 ? pad : found;
     }
     despeckle(border);
+    // Tolérance : 3 px ou 0,4 % du petit côté — en dessous, c'est le grain du
+    // capteur. Longueur maximale rabotée : 4 % du bord, très au-delà d'une
+    // poussière et très en deçà d'un gondolement.
+    rejectOutwardSpikes(
+      border,
+      Math.max(3, Math.round(Math.min(cardW, cardH) * 0.004)),
+      Math.round(lines * 0.04)
+    );
     return border;
   };
 

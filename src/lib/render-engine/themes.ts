@@ -6,6 +6,19 @@ import type { StudioTheme } from "./types";
  * artist, so this list is the seed of the future "Studio" asset table.
  */
 export const THEMES: StudioTheme[] = [
+  // ESSAI — décor fabriqué à partir de la carte elle-même (voir auto-theme.ts).
+  // Les couleurs ci-dessous ne servent qu'à la vignette de choix : au rendu,
+  // renderShot les remplace par celles dérivées de la carte affichée.
+  {
+    id: "auto",
+    name: "Accordé à la carte",
+    wallTop: "#0a0810",
+    wallMid: "#1a1526",
+    horizon: "#332a44",
+    floor: "#060409",
+    spot: "190,170,240",
+    fx: null,
+  },
   // Premier univers sur photographie réelle : scène vide tirée de la photo de
   // Remy « support acrylique sur fond noir » (droits confirmés par lui le
   // 18 août 2026 — c'est sa propre photo). Carte, support et mention légale

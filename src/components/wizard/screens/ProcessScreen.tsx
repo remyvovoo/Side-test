@@ -34,6 +34,14 @@ interface PipelineResult {
 // le résultat. En cas d'échec, l'entrée est purgée pour permettre un réessai.
 const pipelines = new Map<Blob, Promise<PipelineResult>>();
 
+/** Aucun détourage fiable : c'est presque toujours le fond qui est en cause. */
+export class LowContrastError extends Error {
+  constructor(public reason?: unknown) {
+    super("low_contrast");
+    this.name = "LowContrastError";
+  }
+}
+
 async function runPipeline(
   sourceBlob: Blob,
   previewUrl: string,
@@ -58,13 +66,25 @@ async function runPipeline(
   // remove.bg ne sert plus que de roue de secours si notre détourage
   // juge son propre résultat implausible.
   const local = await localRemoveBackground(baseImage);
-  let hdCutout = local?.image ?? null;
+  // Détourage AU PIXEL = résultat auquel on ne fait pas confiance. C'est lui
+  // qui produit les silhouettes déchirées sur fond peu contrasté (carte jaune
+  // sur du bois). Règle posée par Remy le 19 août 2026 : plutôt que d'afficher
+  // une carte mal détourée, on demande une photo sur fond uni. On ne garde
+  // donc que la voie géométrique, et le service de secours prend le relais.
+  const trusted = local?.rectified === true;
+  let hdCutout = trusted ? local!.image : null;
   // Une carte redressée géométriquement est DÉJÀ droite et bord à bord :
   // la repasser au redressement/recentrage pixel ne ferait que la dégrader.
   const alreadyRectified = local?.rectified ?? false;
   if (!hdCutout) {
     onMessage("Détourage renforcé…");
-    const cutoutBlob = await removeBackground(compressed);
+    let cutoutBlob: Blob;
+    try {
+      cutoutBlob = await removeBackground(compressed);
+    } catch (e) {
+      // Ni notre géométrie ni le secours : le fond est en cause, on le dit.
+      throw new LowContrastError(e);
+    }
     const cutoutImage = await loadImage(URL.createObjectURL(cutoutBlob));
     onMessage("Restauration de la netteté…");
     hdCutout = await applyCutoutMask(baseImage, cutoutImage);
@@ -116,7 +136,9 @@ export function ProcessScreen({ sourceBlob, onComplete, onRetake }: ProcessScree
       } catch (e) {
         if (cancelled) return;
         let m = "Le traitement a échoué.";
-        if (e instanceof RemoveBackgroundError) {
+        if (e instanceof LowContrastError) {
+          m = "Le fond ne se distingue pas assez de la carte. Pose-la sur un fond uni et contrasté, puis reprends la photo.";
+        } else if (e instanceof RemoveBackgroundError) {
           if (e.code === 402) m = "Service saturé. Réessaie dans un instant.";
           else if (e.code === 413) m = "Photo trop lourde. Réessaie avec une autre photo.";
           else if (e.code === 500) m = "Le service de détourage n'est pas configuré. Contacte le support.";

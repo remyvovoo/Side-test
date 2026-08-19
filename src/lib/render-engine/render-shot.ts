@@ -11,7 +11,6 @@ import {
   applyGrain,
 } from "./draw-effects";
 import { drawWallLogo, drawCardshotWatermark, drawInfoTag, CARD_KEEPOUT, type Box } from "./draw-overlays";
-import { autoThemeFromCard, AUTO_THEME_ID } from "./auto-theme";
 import type { RenderRequest } from "./types";
 
 // ---- Plaques photographiques -------------------------------------------------
@@ -86,22 +85,15 @@ export function renderShot(canvas: HTMLCanvasElement, request: RenderRequest): v
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
 
-  const { mount, shot } = request;
-  let { theme } = request;
+  const { theme, mount, shot } = request;
   // Plaque photographique si l'univers en a une (et qu'elle est chargée) ;
   // sinon décor dessiné — aussi utilisé en repli le temps du chargement.
-  const img = shot.face === "verso" ? request.versoImage : request.rectoImage;
-
-  // Décor accordé à la carte : les couleurs de l'univers sont remplacées par
-  // celles dérivées de l'image. À faire AVANT de peindre le fond, évidemment.
-  // Si la carte n'a pas de teinte franche, on garde le décor tel quel plutôt
-  // que d'inventer.
-  if (img && theme.id === AUTO_THEME_ID) theme = autoThemeFromCard(img, theme) ?? theme;
-
   const plate = theme.plate ? getPlate(theme.plate, canvas) : null;
   if (plate) drawPlateCover(ctx, plate, W, H);
   else drawBg(ctx, W, H, theme, request.halo);
 
+
+  const img = shot.face === "verso" ? request.versoImage : request.rectoImage;
   if (!img) return;
 
   const iw = (img as HTMLImageElement).naturalWidth || (img as HTMLCanvasElement).width;

@@ -28,6 +28,4 @@ export const THEMES: StudioTheme[] = [
   { id: "eveil-psychique", name: "Éveil Psychique", wallTop: "#0a0014", wallMid: "#2c0658", horizon: "#6c22a8", floor: "#08040f", spot: "200,130,255", fx: null },
   { id: "foudre-sauvage", name: "Foudre Sauvage", wallTop: "#100c00", wallMid: "#443600", horizon: "#9a7c00", floor: "#0b0802", spot: "255,225,90", fx: null },
   { id: "nuit-etoilee", name: "Nuit Étoilée", wallTop: "#02030a", wallMid: "#0c1228", horizon: "#1e2f5c", floor: "#02030a", spot: "170,190,255", fx: "stars" },
-  { id: "jungle-ancestrale", name: "Jungle Ancestrale", wallTop: "#030c00", wallMid: "#123006", horizon: "#316016", floor: "#030b02", spot: "150,230,90", fx: null },
-  { id: "aube-legendaire", name: "Aube Légendaire", wallTop: "#120702", wallMid: "#5c3006", horizon: "#b87c24", floor: "#100804", spot: "255,215,130", fx: "rays" },
 ];

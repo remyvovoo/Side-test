@@ -10,7 +10,7 @@ import {
   applyPhotoGrade,
   applyGrain,
 } from "./draw-effects";
-import { drawLogoBadge, drawInfoTag } from "./draw-overlays";
+import { drawWallLogo, drawInfoTag } from "./draw-overlays";
 import type { RenderRequest } from "./types";
 
 // ---- Plaques photographiques -------------------------------------------------
@@ -83,6 +83,10 @@ export function renderShot(canvas: HTMLCanvasElement, request: RenderRequest): v
   const plate = theme.plate ? getPlate(theme.plate, canvas) : null;
   if (plate) drawPlateCover(ctx, plate, W, H);
   else drawBg(ctx, W, H, theme, request.halo);
+
+  // Le logo appartient au décor : il se pose sur le mur juste après lui, donc
+  // AVANT la carte, son ombre et son reflet — qui passeront devant.
+  drawWallLogo(ctx, W, H, request.logoImage, request.logoText);
 
   const img = shot.face === "verso" ? request.versoImage : request.rectoImage;
   if (!img) return;
@@ -232,5 +236,4 @@ export function renderShot(canvas: HTMLCanvasElement, request: RenderRequest): v
   else applyPhotoGrade(ctx, W, H, theme.spot);
 
   drawInfoTag(ctx, W, H, request.cardInfo);
-  drawLogoBadge(ctx, W, H, request.logoImage, request.logoText);
 }

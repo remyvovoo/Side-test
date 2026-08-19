@@ -298,13 +298,24 @@ export async function localRemoveBackground(
   // Plusieurs passes : si le premier seuil isole un sous-élément de la carte
   // (ex. le cadre de l'illustration, plus contrasté que la carte entière),
   // on abaisse le seuil jusqu'à retrouver un rectangle plausible.
+  let fallback: MaskResult | null = null;
+
   for (const scale of [1, 0.45, 0.28]) {
     const m = buildMask(img, scale);
-    if (!m || !isPlausibleCard(m)) continue;
+    if (!m || m.areaRatio < MIN_AREA_RATIO || m.areaRatio > MAX_AREA_RATIO) continue;
 
     // Voie GÉOMÉTRIQUE d'abord : bords parfaitement droits et perspective
     // corrigée. Le masque ne sert plus qu'à localiser la carte, pas à
     // dessiner son contour — c'est ce qui élimine halo et rognage.
+    //
+    // On la tente même sur un masque JUGÉ IMPLAUSIBLE. Sur un fond peu
+    // contrasté — une carte jaune posée sur du bois, cas rapporté par Remy le
+    // 19 août 2026 — le masque est troué et déchiqueté, donc recalé par
+    // isPlausibleCard ; on tombait alors sur le détourage pixel, qui recopiait
+    // fidèlement ces déchirures dans le visuel final. Or l'ajustement des
+    // droites REJETTE les points aberrants : il survit à un masque bruité là
+    // où la découpe au pixel ne le peut pas. Et il a ses propres garde-fous
+    // (angles, proportions), donc rien ne passe en force.
     const quad = fitCardQuad(m.mask, m.w, m.h);
     if (quad) {
       const sx = (img.naturalWidth || img.width) / m.w;
@@ -316,7 +327,12 @@ export async function localRemoveBackground(
         // on retombe sur le détourage pixel ci-dessous
       }
     }
-    return { image: await applyMask(img, m), rectified: false };
+    // Le pixel ne sert plus que de dernier recours, et seulement si le masque
+    // est franchement plausible : mieux vaut rendre la main que livrer une
+    // silhouette déchirée.
+    if (!fallback && isPlausibleCard(m)) fallback = m;
   }
+
+  if (fallback) return { image: await applyMask(img, fallback), rectified: false };
   return null;
 }

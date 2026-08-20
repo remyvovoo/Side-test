@@ -685,6 +685,27 @@ function rejectOutwardSpikes(border: Float32Array, tolerance: number, maxRun: nu
   }
 }
 
+/**
+ * Médiane glissante sur une fenêtre large : lisse le tremblement de mesure
+ * sans toucher aux vrais défauts. Une médiane ne déplace pas un bord franc —
+ * elle ne supprime que ce qui est plus étroit que la moitié de sa fenêtre —,
+ * donc un éclat ou un coin écorné la traverse intact.
+ */
+function medianFilter(border: Float32Array, radius: number): void {
+  if (radius < 1) return;
+  const src = Float32Array.from(border);
+  const win: number[] = [];
+  for (let i = 0; i < border.length; i++) {
+    win.length = 0;
+    for (let k = -radius; k <= radius; k++) {
+      const j = i + k;
+      if (j >= 0 && j < src.length) win.push(src[j]);
+    }
+    win.sort((a, b) => a - b);
+    border[i] = win[win.length >> 1];
+  }
+}
+
 /** Médiane glissante à 3 : efface le pixel isolé, garde le vrai défaut. */
 function despeckle(border: Float32Array): void {
   const src = Float32Array.from(border);
@@ -869,21 +890,50 @@ function traceSilhouette(
     const consensus = median(Array.from(border));
     const bgLum = 0.299 * bg[0] + 0.587 * bg[1] + 0.114 * bg[2];
     const tol = Math.max(3, Math.round(Math.min(cardW, cardH) * 0.006));
+    const rescued = new Uint8Array(lines);
     for (let line = 0; line < lines; line++) {
       if (border[line] <= consensus + tol) continue;
       const p = read(line, Math.round((consensus + border[line]) / 2));
       if (!valid[p]) {
-        border[line] = consensus;
+        rescued[line] = 1;
         continue;
       }
       const lum = 0.299 * d[p * 4] + 0.587 * d[p * 4 + 1] + 0.114 * d[p * 4 + 2];
       const isCard =
         Math.abs(lum - bgLum) > EDGE_MIN_STEP ||
         bgDistance(d, p * 4, bg[0], bg[1], bg[2]) > threshold;
-      if (isCard) border[line] = consensus;
+      if (isCard) rescued[line] = 1;
+    }
+    // Les lignes rattrapées reprennent la valeur de leurs VOISINES, par
+    // interpolation — pas une constante commune. Les recaler toutes sur la
+    // médiane du côté créait une MARCHE nette là où les lignes rattrapées
+    // touchaient les bonnes : c'est le décrochement que Remy a vu sur le bord
+    // droit (262 lignes à 0 px contre 569 à 10 px). Un bord de carte ne fait
+    // pas de marche ; il continue ses voisines.
+    for (let line = 0; line < lines; line++) {
+      if (!rescued[line]) continue;
+      let end = line;
+      while (end < lines && rescued[end]) end++;
+      let before = line - 1;
+      while (before >= 0 && rescued[before]) before--;
+      const vBefore = before >= 0 ? border[before] : NaN;
+      const vAfter = end < lines ? border[end] : NaN;
+      for (let k = line; k < end; k++) {
+        if (Number.isNaN(vBefore) && Number.isNaN(vAfter)) border[k] = consensus;
+        else if (Number.isNaN(vBefore)) border[k] = vAfter;
+        else if (Number.isNaN(vAfter)) border[k] = vBefore;
+        else border[k] = vBefore + ((vAfter - vBefore) * (k - line + 1)) / (end - line + 1);
+      }
+      line = end;
     }
 
     despeckle(border);
+    // Lissage médian sur une fenêtre plus large que le grain de mesure : le
+    // relevé oscille de quelques pixels d'une ligne à l'autre, ce qui, sur fond
+    // noir, se lit comme un contour DÉCHIQUETÉ (constaté par Remy le 19 août
+    // 2026). Un bord de carte est lisse. La fenêtre reste bien plus courte
+    // qu'un éclat, qui traverse le filtre sans être touché.
+    medianFilter(border, Math.max(3, Math.round(Math.min(cardW, cardH) * 0.01)));
     // Tolérance : 3 px ou 0,4 % du petit côté — en dessous, c'est le grain du
     // capteur. Longueur maximale rabotée : 4 % du bord, très au-delà d'une
     // poussière et très en deçà d'un gondolement.

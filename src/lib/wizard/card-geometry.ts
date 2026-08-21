@@ -979,6 +979,75 @@ function traceSilhouette(
       fillEvidence();
       const path = solveContour(evidence, lines, depths, CONTOUR_STIFFNESS);
       for (let i = 0; i < lines; i++) border[i] = start + path[i];
+
+      // PRÉCISION SOUS-PIXEL — ET ELLE SERT À POSER UNE DROITE.
+      //
+      // L'optimisation raisonne sur des profondeurs ENTIÈRES : sur un côté très
+      // légèrement oblique — c'est-à-dire tous —, le contour saute d'un pixel
+      // de temps en temps, ce qui se lit comme un ESCALIER le long de l'arête
+      // (repéré par Remy le 21 août 2026 sur le bord droit de son Mamanbo).
+      //
+      // Affiner chaque ligne isolément ne suffit pas : chacune suit alors son
+      // propre bruit, et l'escalier devient un tremblement (écart-type mesuré
+      // à 2,5 px). C'est exactement la faute de méthode qu'on a déjà corrigée
+      // ailleurs. On affine donc au sous-pixel, PUIS on ajuste une DROITE sur
+      // ces positions — car un côté de carte est une droite. Seules les lignes
+      // que l'optimisation a jugées franchement déviantes (un éclat) gardent
+      // leur position propre ; toutes les autres reprennent la droite, au
+      // centième de pixel près. Le canal alpha étant en couverture
+      // fractionnaire, un bord à 12,4 px donne un pixel à 40 % : lisse.
+      const refined = new Float32Array(lines);
+      for (let i = 0; i < lines; i++) {
+        refined[i] = border[i];
+        const dInt = Math.round(border[i]);
+        const pOut = read(i, Math.max(0, dInt - 2));
+        const pIn = read(i, Math.min(depth - 1, dInt + 2));
+        if (!valid[pOut] || !valid[pIn]) continue;
+        const lOut = lum(pOut);
+        const lIn = lum(pIn);
+        if (Math.abs(lIn - lOut) < 6) continue;
+        const mid = (lOut + lIn) / 2;
+        for (let k = dInt - 2; k < dInt + 2; k++) {
+          const a = read(i, Math.max(0, k));
+          const b = read(i, Math.min(depth - 1, k + 1));
+          if (!valid[a] || !valid[b]) continue;
+          const la = lum(a);
+          const lb = lum(b);
+          if ((la - mid) * (lb - mid) <= 0 && la !== lb) {
+            refined[i] = k + (mid - la) / (lb - la);
+            break;
+          }
+        }
+      }
+
+      // Ajustement ROBUSTE d'une droite sur ces positions : on ajuste, on
+      // mesure les écarts, on rejette ce qui s'en éloigne franchement, et on
+      // recommence. Ce qui reste à l'écart après deux passes est un vrai
+      // défaut du bord (éclat, coin corné) et garde sa position propre ; tout
+      // le reste vient se poser sur la droite, au centième de pixel.
+      const garde = new Uint8Array(lines).fill(1);
+      let pente = 0;
+      let ord = median(Array.from(refined));
+      for (let it = 0; it < 3; it++) {
+        let sx = 0, sy = 0, sxx = 0, sxy = 0, n = 0;
+        for (let i = 0; i < lines; i++) {
+          if (!garde[i]) continue;
+          sx += i; sy += refined[i]; sxx += i * i; sxy += i * refined[i]; n++;
+        }
+        if (n < lines * 0.25) break;
+        const det = n * sxx - sx * sx;
+        pente = Math.abs(det) > 1e-6 ? (n * sxy - sx * sy) / det : 0;
+        ord = (sy - pente * sx) / n;
+        if (it === 2) break;
+        const ecarts: number[] = [];
+        for (let i = 0; i < lines; i++) ecarts.push(Math.abs(refined[i] - (ord + pente * i)));
+        const tol = Math.max(1.2, median(ecarts) * 3);
+        for (let i = 0; i < lines; i++) garde[i] = ecarts[i] <= tol ? 1 : 0;
+      }
+      for (let i = 0; i < lines; i++) {
+        border[i] = garde[i] ? ord + pente * i : refined[i];
+      }
+
       if (pass === 1) break;
       // La couleur du liseré est réapprise SUR LE CONTOUR OBTENU, ligne par
       // ligne — plus sur la droite ajustée. Même si une portion du contour s'est

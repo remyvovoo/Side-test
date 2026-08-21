@@ -36,6 +36,15 @@ interface BuildZipParams {
   description: string;
   baseName: string;
   format: ExportFormat;
+  /**
+   * Photos telles qu'elles sortent de l'appareil, avant tout traitement.
+   *
+   * Jointes au dossier parce qu'une photo prise DANS l'application n'atterrit
+   * pas dans la pellicule du téléphone : quand un détourage se passe mal, le
+   * vendeur n'a plus d'original à montrer et le défaut n'est pas reproductible.
+   * Elles servent aussi de sauvegarde à qui veut refaire ses visuels plus tard.
+   */
+  sourcePhotos?: { face: string; blob: Blob }[];
 }
 
 /**
@@ -52,6 +61,7 @@ export async function buildAndDownloadZip({
   description,
   baseName,
   format,
+  sourcePhotos = [],
 }: BuildZipParams): Promise<void> {
   const zip = new JSZip();
   const slug = slugify(baseName) || "carte";
@@ -80,6 +90,10 @@ export async function buildAndDownloadZip({
   // à 500 px. Un doublon en moins bonne qualité, donc inexploitable pour une
   // annonce — les marchands fabriquent eux-mêmes leurs vignettes à partir de
   // la photo principale. Retiré à la demande de Remy le 19 août 2026.
+
+  for (const p of sourcePhotos) {
+    folder.file(`photo-origine-${p.face}.${p.blob.type === "image/png" ? "png" : "jpg"}`, p.blob);
+  }
 
   folder.file("description.txt", description || "");
 

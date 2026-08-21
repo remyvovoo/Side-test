@@ -143,6 +143,8 @@ export function WizardApp({
   const [profileModalOpenCount, setProfileModalOpenCount] = useState(0);
 
   const [sourceBlob, setSourceBlob] = useState<Blob | null>(null);
+  /** Photos d'origine conservées pour être jointes au dossier exporté. */
+  const sourcePhotosRef = useRef<{ recto: Blob | null; verso: Blob | null }>({ recto: null, verso: null });
   const [quality, setQuality] = useState<QualityResult | null>(null);
 
   // Identification des infos de la carte par l'IA (chantier C).
@@ -350,6 +352,10 @@ export function WizardApp({
   /** Suite du parcours une fois la carte découpée et la note affichée. */
   function proceedWithCropped(result: HTMLImageElement) {
     croppedRef.current = null;
+    // Une photo prise DANS l'application n'atterrit pas dans la pellicule du
+    // téléphone : sans ça, un détourage raté n'est pas reproductible faute
+    // d'original. On la garde pour la joindre au dossier exporté.
+    if (sourceBlob) sourcePhotosRef.current[face] = sourceBlob;
     if (face === "recto") {
       setRectoImage(result);
       // L'IA lit la carte en tâche de fond pendant que le vendeur enchaîne sur
@@ -516,6 +522,9 @@ export function WizardApp({
         rectoImage,
         versoImage,
         baseRequest: buildBaseRequest(),
+        sourcePhotos: (["recto", "verso"] as const)
+          .map((f) => ({ face: f as string, blob: sourcePhotosRef.current[f] }))
+          .filter((p): p is { face: string; blob: Blob } => !!p.blob),
         description,
         baseName: cardInfo.name || "carte",
         format,

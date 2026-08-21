@@ -390,6 +390,30 @@ export function refineQuadByGradient(img: HTMLImageElement, quad: Pt[], outRatio
   // Aucun bord crédible nulle part : on ne touche à rien.
   if (candidates.every((cs) => cs[0].score < REFINE_MIN_STEP)) return quad;
 
+  // LE LISERÉ FAIT LA MÊME LARGEUR SUR LES QUATRE CÔTÉS.
+  //
+  // Quand un côté ne présente aucune marche franche alors que les autres sont
+  // nets, on n'a pas à deviner : la carte nous donne elle-même la réponse. Sur
+  // le Zébibron de Remy, le bord haut hésitait entre la limite d'impression
+  // (score 23) et l'arête réelle (20) pendant que gauche et droite tranchaient
+  // sans ambiguïté à 39 — l'information était sous nos yeux, inutilisée.
+  const strong = candidates
+    .map((cs, i) => ({ i, t: cs[0].t, score: cs[0].score }))
+    .filter((c) => c.score >= REFINE_MIN_STEP * 2.5);
+  if (strong.length >= 2) {
+    const widthRef = medianOf(strong.map((c) => c.t));
+    for (let i = 0; i < 4; i++) {
+      if (strong.some((c) => c.i === i)) continue;
+      // Côté faible : on ne le laisse pas partir loin de la largeur mesurée
+      // ailleurs. Le candidat le plus proche de cette largeur l'emporte ; s'il
+      // n'y en a aucun de crédible, on adopte la largeur elle-même.
+      const near = candidates[i].reduce((best, k) =>
+        Math.abs(k.t - widthRef) < Math.abs(best.t - widthRef) ? k : best
+      );
+      candidates[i] = Math.abs(near.t - widthRef) <= side * 0.02 ? [near] : [{ t: widthRef, score: 0 }];
+    }
+  }
+
   const maxScore = candidates.map((cs) => Math.max(...cs.map((k) => k.score), 1e-6));
 
   // Pour chaque côté, la marche crédible la plus EXTÉRIEURE. Quand deux marches
@@ -629,110 +653,102 @@ function median(a: number[]): number {
 }
 
 /**
- * Écart au fond insensible aux ombres : une ombre portée a la même teinte que
- * le fond, en plus sombre. On mesure surtout la différence de COULEUR, et on
- * ne compte l'écart de luminosité que s'il est plus CLAIR que le fond.
+ * Poids de la CONTINUITÉ du bord, en unités de preuve par pixel d'écart entre
+ * deux lignes voisines. Trop bas : le contour tremble. Trop haut : un éclat se
+ * fait raboter. Réglé au banc d'essai sur un éclat de 26 px.
  */
-function bgDistance(
-  d: Uint8ClampedArray,
-  i: number,
-  r: number,
-  g: number,
-  b: number
-): number {
-  const dr = d[i] - r;
-  const dg = d[i + 1] - g;
-  const db = d[i + 2] - b;
-  const dl = (dr + dg + db) / 3;
-  const cr = dr - dl;
-  const cg = dg - dl;
-  const cb = db - dl;
-  return Math.sqrt(cr * cr + cg * cg + cb * cb) + Math.max(0, dl) * 0.5;
-}
+const CONTOUR_STIFFNESS = 0.42;
 
 /**
- * Efface les SAILLIES ÉTROITES vers l'extérieur.
+ * Relève le contour d'un côté EN UNE SEULE FOIS, et non ligne par ligne.
  *
- * Le balayage s'arrête au premier pixel qui n'est plus le fond. Une poussière
- * sur la table, un éclat de lumière, une miette à deux millimètres du bord
- * l'arrêtent donc trop tôt : tout ce qui va de cette poussière jusqu'à la
- * carte est alors gardé, et il en sort une petite languette de fond accrochée
- * au bord. Sur fond clair elle est presque invisible, sauf la poussière
- * elle-même — c'est exactement ce que Remy a vu au coin haut-gauche du verso
- * de son Mewtwo (19 août 2026).
+ * POURQUOI CETTE RÉÉCRITURE (19 août 2026). Chaque ligne décidait seule où
+ * était le bord : mille lignes, mille décisions indépendantes. Quand le signal
+ * est faible — un liseré argenté sur une table claire, à 6,5 d'écart de teinte
+ * quand le seuil de bruit est à 16 — une ligne sur trois se trompait, et comme
+ * les erreurs étaient indépendantes elles ne se compensaient pas : elles se
+ * voyaient. Le peigne en haut du rendu, la marche sur le bord droit, le contour
+ * dentelé : trois symptômes de la MÊME faute de méthode. Les cinq rustines
+ * successives (médiane à 3, rejet des saillies, consensus, interpolation,
+ * lissage médian) tentaient de recoller après coup des décisions qui n'auraient
+ * jamais dû être prises séparément — et l'une d'elles a créé la marche.
  *
- * Ce qui distingue la poussière du vrai bord, ce n'est pas l'amplitude mais la
- * LARGEUR : une carte gondolée bombe sur une longue portion du bord, une
- * poussière tient en quelques pixels. On ne rabote donc que les saillies
- * courtes, et JAMAIS les creux — les creux sont les éclats et les coins
- * écornés, qui font partie de l'état que l'acheteur doit voir.
+ * CE QU'ON FAIT MAINTENANT. On cherche le contour, sur tout le côté, qui
+ * maximise la somme des preuves tout en restant CONTINU. Deux forces en
+ * tension, et une seule optimisation qui les arbitre :
+ *   - ce que disent les pixels à chaque profondeur possible ;
+ *   - le fait qu'un bord de carte ne saute pas de 30 px d'une ligne à l'autre.
+ * Un éclat a une preuve forte et localisée : il l'emporte sur la continuité,
+ * donc il est CONSERVÉ. Le bruit, faible et isolé, perd. Rien n'est lissé après
+ * coup : la régularité fait partie de la question posée.
+ *
+ * Résolu exactement par programmation dynamique, en une passe par côté.
  */
-function rejectOutwardSpikes(border: Float32Array, tolerance: number, maxRun: number): void {
-  const baseline = median(Array.from(border));
-  const limit = baseline - tolerance; // plus petit = plus vers l'extérieur
-  let i = 0;
-  while (i < border.length) {
-    if (border[i] >= limit) {
-      i++;
-      continue;
-    }
-    let j = i;
-    while (j < border.length && border[j] < limit) j++;
-    if (j - i <= maxRun) {
-      for (let k = i; k < j; k++) border[k] = baseline;
-    }
-    i = j;
-  }
-}
+function solveContour(
+  evidence: Float32Array,
+  lines: number,
+  depths: number,
+  stiffness: number
+): Float32Array {
+  const cost = new Float32Array(lines * depths);
+  const from = new Int32Array(lines * depths);
+  const row = new Float32Array(depths);
 
-/**
- * Médiane glissante sur une fenêtre large : lisse le tremblement de mesure
- * sans toucher aux vrais défauts. Une médiane ne déplace pas un bord franc —
- * elle ne supprime que ce qui est plus étroit que la moitié de sa fenêtre —,
- * donc un éclat ou un coin écorné la traverse intact.
- */
-function medianFilter(border: Float32Array, radius: number): void {
-  if (radius < 1) return;
-  const src = Float32Array.from(border);
-  const win: number[] = [];
-  for (let i = 0; i < border.length; i++) {
-    win.length = 0;
-    for (let k = -radius; k <= radius; k++) {
-      const j = i + k;
-      if (j >= 0 && j < src.length) win.push(src[j]);
-    }
-    win.sort((a, b) => a - b);
-    border[i] = win[win.length >> 1];
-  }
-}
+  for (let d = 0; d < depths; d++) cost[d] = -evidence[d];
 
-/** Médiane glissante à 3 : efface le pixel isolé, garde le vrai défaut. */
-function despeckle(border: Float32Array): void {
-  const src = Float32Array.from(border);
-  for (let i = 1; i < border.length - 1; i++) {
-    const a = src[i - 1];
-    const b = src[i];
-    const c = src[i + 1];
-    border[i] = Math.max(Math.min(a, b), Math.min(Math.max(a, b), c));
+  for (let i = 1; i < lines; i++) {
+    const prev = (i - 1) * depths;
+    const cur = i * depths;
+    // Enveloppe inférieure du coût précédent pénalisé en |Δ| : deux passes
+    // suffisent (aller puis retour), d'où un coût linéaire et non quadratique.
+    for (let d = 0; d < depths; d++) {
+      row[d] = cost[prev + d];
+      from[cur + d] = d;
+    }
+    for (let d = 1; d < depths; d++) {
+      const alt = row[d - 1] + stiffness;
+      if (alt < row[d]) {
+        row[d] = alt;
+        from[cur + d] = from[cur + d - 1];
+      }
+    }
+    for (let d = depths - 2; d >= 0; d--) {
+      const alt = row[d + 1] + stiffness;
+      if (alt < row[d]) {
+        row[d] = alt;
+        from[cur + d] = from[cur + d + 1];
+      }
+    }
+    for (let d = 0; d < depths; d++) cost[cur + d] = row[d] - evidence[cur + d];
   }
+
+  // Meilleure fin, puis remontée du chemin.
+  const last = (lines - 1) * depths;
+  let best = 0;
+  for (let d = 1; d < depths; d++) if (cost[last + d] < cost[last + best]) best = d;
+
+  const border = new Float32Array(lines);
+  let d = best;
+  for (let i = lines - 1; i >= 0; i--) {
+    border[i] = d;
+    if (i > 0) d = from[i * depths + d];
+  }
+  return border;
 }
 
 /**
  * Trouve le VRAI bord de la carte et l'écrit dans le canal alpha.
  *
  * L'image reçue est déjà redressée : les 4 bords de la carte sont donc des
- * droites quasi parfaites, situées à `pad` pixels de chaque côté. On balaie
- * chaque ligne (et chaque colonne) depuis le fond vers l'intérieur et on
- * s'arrête au premier pixel qui n'est plus le fond. Ce que ça préserve, et
- * qu'un rectangle arrondi idéal détruisait :
+ * droites quasi parfaites, situées à `pad` pixels de chaque côté. Ce que le
+ * relevé préserve, et qu'un rectangle arrondi idéal détruisait :
  *   - les coins CARRÉS des anciennes séries (on ne présume plus de la forme) ;
  *   - les ÉCLATS et coins écornés, qui font partie de l'état de la carte ;
  *   - les bords blanchis par l'usure, que la contraction du bord rabotait.
  *
- * Les droites ajustées ne servent que de fenêtre de recherche : le bord ne
- * peut ni rentrer au-delà d'un éclat plausible (MAX_BITE_RATIO), ni déborder
- * au-delà d'un léger gondolement (MAX_BULGE_RATIO). Hors de cette fenêtre, on
- * retombe sur la droite — jamais sur du fond.
+ * Les droites ajustées ne servent que de fenêtre de recherche : le bord ne peut
+ * ni rentrer au-delà d'un éclat plausible (MAX_BITE_RATIO), ni déborder au-delà
+ * d'un léger gondolement (MAX_BULGE_RATIO).
  */
 function traceSilhouette(
   d: Uint8ClampedArray,
@@ -746,14 +762,8 @@ function traceSilhouette(
   const bite = Math.round(Math.min(cardW, cardH) * MAX_BITE_RATIO);
   const bulge = Math.round(Math.min(cardW, cardH) * MAX_BULGE_RATIO);
 
-  // Couleur du fond, mesurée sur la bande extérieure de chaque côté.
   const strip = Math.max(2, Math.round(pad * 0.5));
-  const sampleBg = (
-    x0: number,
-    x1: number,
-    y0: number,
-    y1: number
-  ): [number, number, number] => {
+  const sampleBg = (x0: number, x1: number, y0: number, y1: number): [number, number, number] => {
     const rs: number[] = [];
     const gs: number[] = [];
     const bs: number[] = [];
@@ -769,179 +779,103 @@ function traceSilhouette(
     return [median(rs), median(gs), median(bs)];
   };
 
-  /**
-   * Balayage d'un côté. `read(line, step)` donne l'index du pixel à `step`
-   * pixels de profondeur sur la ligne `line`. Renvoie la position du bord,
-   * en sous-pixel, dans le repère de profondeur.
-   */
+  const lum = (p: number) => 0.299 * d[p * 4] + 0.587 * d[p * 4 + 1] + 0.114 * d[p * 4 + 2];
+  const dist3 = (p: number, c: [number, number, number]) =>
+    Math.abs(d[p * 4] - c[0]) + Math.abs(d[p * 4 + 1] - c[1]) + Math.abs(d[p * 4 + 2] - c[2]);
+
   const scanSide = (
     lines: number,
     bg: [number, number, number],
     read: (line: number, step: number) => number
   ): Float32Array => {
-    const depth = pad + bite;
     const start = Math.max(0, pad - bulge);
-    // Seuil adaptatif : proportionnel au contraste carte/fond réellement
-    // observé, avec un plancher pour ne pas suivre le bruit du capteur.
+    const depth = pad + bite;
+    const depths = depth - start;
+    if (depths < 3) return new Float32Array(lines).fill(pad);
+
+    // Couleur du LISERÉ de la carte, apprise sur place.
+    //
+    // On ne compare plus seulement « ce pixel ressemble-t-il au fond ? » — sur
+    // un liseré gris posé sur une table grise, la réponse est trop incertaine.
+    // On compare « ressemble-t-il davantage au FOND ou au LISERÉ ? », et le
+    // liseré, on le mesure : la grande majorité des lignes tombent juste, donc
+    // la médiane de la bande juste à l'intérieur de la droite ajustée EST sa
+    // couleur. Une différence de 6,5 suffit largement à trancher entre deux
+    // références connues, là où elle ne suffisait pas contre un seuil fixe.
+    const cr: number[] = [];
+    const cg: number[] = [];
+    const cb: number[] = [];
+    for (let line = 0; line < lines; line += 3) {
+      for (let s = pad + 3; s < Math.min(pad + 12, depth); s++) {
+        const p = read(line, s);
+        if (!valid[p]) continue;
+        cr.push(d[p * 4]);
+        cg.push(d[p * 4 + 1]);
+        cb.push(d[p * 4 + 2]);
+      }
+    }
+    const card: [number, number, number] = [median(cr), median(cg), median(cb)];
+    // Écart entre les deux références : c'est l'unité dans laquelle on mesure
+    // « plutôt liseré » ou « plutôt fond ». Un plancher évite de diviser par
+    // presque rien quand les deux se ressemblent vraiment trop.
+    const separation = Math.max(
+      12,
+      Math.abs(card[0] - bg[0]) + Math.abs(card[1] - bg[1]) + Math.abs(card[2] - bg[2])
+    );
+
+    // Référence de marche : l'amplitude typique du bord sur ce côté.
     const peaks: number[] = [];
     for (let line = 0; line < lines; line += 8) {
       let mx = 0;
-      for (let step = start; step < depth; step++) {
-        const p = read(line, step);
-        if (!valid[p]) continue;
-        const v = bgDistance(d, p * 4, bg[0], bg[1], bg[2]);
-        if (v > mx) mx = v;
+      for (let s = start + 1; s < depth - 1; s++) {
+        const a = read(line, s + 1);
+        const b = read(line, s - 1);
+        if (!valid[a] || !valid[b]) continue;
+        const g = Math.abs(lum(a) - lum(b));
+        if (g > mx) mx = g;
       }
       peaks.push(mx);
     }
-    const threshold = Math.max(18, median(peaks) * 0.4);
+    const gRef = Math.max(EDGE_MIN_STEP, median(peaks));
 
-    // Même seuil adaptatif, pour la MARCHE DE LUMINOSITÉ cette fois.
-    const gPeaks: number[] = [];
-    for (let line = 0; line < lines; line += 8) {
-      let mx = 0;
-      for (let step = start + 1; step < depth - 1; step++) {
-        const a = read(line, step + 1);
-        const b = read(line, step - 1);
-        if (!valid[a] || !valid[b]) continue;
-        const g = Math.abs(
-          0.299 * d[a * 4] + 0.587 * d[a * 4 + 1] + 0.114 * d[a * 4 + 2] -
-            (0.299 * d[b * 4] + 0.587 * d[b * 4 + 1] + 0.114 * d[b * 4 + 2])
-        );
-        if (g > mx) mx = g;
+    // Preuve, pour chaque ligne et chaque profondeur : « la frontière est ICI ».
+    // Trois indices additionnés — la marche de luminosité, la matière au-dedans
+    // qui ressemble au liseré, la matière au-dehors qui ressemble au fond.
+    const evidence = new Float32Array(lines * depths);
+    for (let line = 0; line < lines; line++) {
+      const base = line * depths;
+      for (let k = 0; k < depths; k++) {
+        const s = start + k;
+        const pa = read(line, Math.min(depth - 1, s + 1));
+        const pb = read(line, Math.max(start, s - 1));
+        const grad = valid[pa] && valid[pb] ? Math.abs(lum(pa) - lum(pb)) : 0;
+
+        let inScore = 0;
+        let inN = 0;
+        for (let t = 0; t < 4; t++) {
+          const p = read(line, Math.min(depth - 1, s + t));
+          if (!valid[p]) continue;
+          inScore += dist3(p, bg) - dist3(p, card);
+          inN++;
+        }
+        let outScore = 0;
+        let outN = 0;
+        for (let t = 1; t <= 4; t++) {
+          const p = read(line, Math.max(0, s - t));
+          if (!valid[p]) continue;
+          outScore += dist3(p, card) - dist3(p, bg);
+          outN++;
+        }
+        const inside = inN ? inScore / inN / separation : 0;
+        const outside = outN ? outScore / outN / separation : 0;
+        evidence[base + k] =
+          Math.min(1.6, grad / gRef) + 0.9 * Math.max(-1, Math.min(1, inside)) + 0.9 * Math.max(-1, Math.min(1, outside));
       }
-      gPeaks.push(mx);
     }
-    const gThreshold = Math.max(EDGE_MIN_STEP, median(gPeaks) * 0.3);
 
+    const path = solveContour(evidence, lines, depths, CONTOUR_STIFFNESS);
     const border = new Float32Array(lines);
-    const prof = new Float32Array(depth); // luminance le long du balayage
-    for (let line = 0; line < lines; line++) {
-      let found = -1;
-      let prev = 0;
-      for (let step = start; step < depth; step++) {
-        const p = read(line, step);
-        const ok = valid[p] === 1;
-        prof[step] = ok ? 0.299 * d[p * 4] + 0.587 * d[p * 4 + 1] + 0.114 * d[p * 4 + 2] : NaN;
-        const v = ok ? bgDistance(d, p * 4, bg[0], bg[1], bg[2]) : 0;
-        if (found < 0 && v > threshold) {
-          // Deux pixels d'affilée : un pixel isolé est du bruit, pas un bord.
-          const q = read(line, Math.min(depth - 1, step + 1));
-          const v2 = valid[q] ? bgDistance(d, q * 4, bg[0], bg[1], bg[2]) : 0;
-          if (v2 > threshold) {
-            const t = v > prev ? (threshold - prev) / (v - prev) : 0;
-            found = step - 1 + Math.min(1, Math.max(0, t));
-          }
-        }
-        prev = v;
-      }
-
-      // Deuxième lecture, par MARCHE DE LUMINOSITÉ.
-      //
-      // Elle n'est pas un simple repli : sur une carte à liseré argenté posée
-      // sur une feuille claire, le critère de couleur ne se tait pas, il se
-      // TROMPE. Le liseré ne se distingue pas du fond par la teinte, donc le
-      // balayage file au travers et s'arrête au premier pixel vraiment coloré :
-      // la zone imprimée. Le liseré tombait ainsi hors de la découpe alors même
-      // que le cadre, lui, était juste (constaté par Remy le 19 août 2026 —
-      // « au détourage c'est correct, mais le rendu final retire le contour »).
-      //
-      // On retient la PREMIÈRE marche crédible en venant de l'extérieur, et non
-      // la plus forte. Mesuré sur le Zébibron : à l'intérieur du liseré, la
-      // frontière avec l'illustration sombre présente une marche PLUS FRANCHE
-      // (~90) que l'arête de la carte elle-même (~60). Chercher la plus forte
-      // ramenait donc la découpe à la zone imprimée sur un tiers du côté — le
-      // liseré survivait par endroits et disparaissait ailleurs. Or l'arête
-      // d'une carte est par définition la marche la plus EXTÉRIEURE : au-delà,
-      // il n'y a plus que du fond.
-      let gStep = -1;
-      for (let step = start + 1; step < depth - 1; step++) {
-        const a = prof[step + 1];
-        const b = prof[step - 1];
-        if (Number.isNaN(a) || Number.isNaN(b)) continue;
-        if (Math.abs(a - b) > gThreshold) {
-          gStep = step;
-          break;
-        }
-      }
-      // La plus extérieure des deux lectures l'emporte : elle ne peut
-      // qu'ajouter de la matière, jamais rogner la carte. Et la fenêtre,
-      // bornée par MAX_BULGE_RATIO, empêche d'aller chercher une ombre loin
-      // du bord.
-      if (gStep >= 0 && (found < 0 || gStep < found)) found = gStep;
-
-      // Toujours rien (côté hors cadre, fond indiscernable) : on s'en remet à
-      // la droite ajustée, jamais au fond.
-      border[line] = found < 0 ? pad : found;
-    }
-    // Rattrapage des lignes qui ont manqué l'arête.
-    //
-    // Chaque ligne décide seule, et sur un liseré clair posé sur un fond clair
-    // la marche est parfois trop faible pour être vue : la ligne file alors
-    // jusqu'à la frontière de la zone imprimée, 30 px plus loin. Mesuré sur le
-    // Zébibron : 175 colonnes sur 620 en haut, 99 en bas, avec une cinquantaine
-    // de sauts brusques — d'où la bande noire striée que Remy voyait en haut du
-    // rendu, alors que le cadre, lui, était juste.
-    //
-    // Le juge qui manquait : REGARDER CE QU'IL Y A ENTRE les deux positions.
-    // Si c'est du fond, la ligne a raison — c'est un éclat, et un éclat doit
-    // être conservé. Si c'est de la matière, la ligne s'est trompée et l'arête
-    // est plus loin dehors. La luminosité tranche là où la teinte ne dit rien.
-    const consensus = median(Array.from(border));
-    const bgLum = 0.299 * bg[0] + 0.587 * bg[1] + 0.114 * bg[2];
-    const tol = Math.max(3, Math.round(Math.min(cardW, cardH) * 0.006));
-    const rescued = new Uint8Array(lines);
-    for (let line = 0; line < lines; line++) {
-      if (border[line] <= consensus + tol) continue;
-      const p = read(line, Math.round((consensus + border[line]) / 2));
-      if (!valid[p]) {
-        rescued[line] = 1;
-        continue;
-      }
-      const lum = 0.299 * d[p * 4] + 0.587 * d[p * 4 + 1] + 0.114 * d[p * 4 + 2];
-      const isCard =
-        Math.abs(lum - bgLum) > EDGE_MIN_STEP ||
-        bgDistance(d, p * 4, bg[0], bg[1], bg[2]) > threshold;
-      if (isCard) rescued[line] = 1;
-    }
-    // Les lignes rattrapées reprennent la valeur de leurs VOISINES, par
-    // interpolation — pas une constante commune. Les recaler toutes sur la
-    // médiane du côté créait une MARCHE nette là où les lignes rattrapées
-    // touchaient les bonnes : c'est le décrochement que Remy a vu sur le bord
-    // droit (262 lignes à 0 px contre 569 à 10 px). Un bord de carte ne fait
-    // pas de marche ; il continue ses voisines.
-    for (let line = 0; line < lines; line++) {
-      if (!rescued[line]) continue;
-      let end = line;
-      while (end < lines && rescued[end]) end++;
-      let before = line - 1;
-      while (before >= 0 && rescued[before]) before--;
-      const vBefore = before >= 0 ? border[before] : NaN;
-      const vAfter = end < lines ? border[end] : NaN;
-      for (let k = line; k < end; k++) {
-        if (Number.isNaN(vBefore) && Number.isNaN(vAfter)) border[k] = consensus;
-        else if (Number.isNaN(vBefore)) border[k] = vAfter;
-        else if (Number.isNaN(vAfter)) border[k] = vBefore;
-        else border[k] = vBefore + ((vAfter - vBefore) * (k - line + 1)) / (end - line + 1);
-      }
-      line = end;
-    }
-
-    despeckle(border);
-    // Lissage médian sur une fenêtre plus large que le grain de mesure : le
-    // relevé oscille de quelques pixels d'une ligne à l'autre, ce qui, sur fond
-    // noir, se lit comme un contour DÉCHIQUETÉ (constaté par Remy le 19 août
-    // 2026). Un bord de carte est lisse. La fenêtre reste bien plus courte
-    // qu'un éclat, qui traverse le filtre sans être touché.
-    medianFilter(border, Math.max(3, Math.round(Math.min(cardW, cardH) * 0.01)));
-    // Tolérance : 3 px ou 0,4 % du petit côté — en dessous, c'est le grain du
-    // capteur. Longueur maximale rabotée : 4 % du bord, très au-delà d'une
-    // poussière et très en deçà d'un gondolement.
-    rejectOutwardSpikes(
-      border,
-      Math.max(3, Math.round(Math.min(cardW, cardH) * 0.004)),
-      Math.round(lines * 0.04)
-    );
+    for (let i = 0; i < lines; i++) border[i] = start + path[i];
     return border;
   };
 

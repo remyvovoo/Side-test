@@ -61,6 +61,8 @@ export function CropScreen({ image, cropSource, uncertain, title, onApply, onRet
   const [error, setError] = useState<string | null>(null);
   const scaleRef = useRef(1);
   const dragRef = useRef(-1);
+  /** Coin en cours de déplacement, en coordonnées photo : cible de la loupe. */
+  const magRef = useRef<Corner | null>(null);
 
   function draw(current: Corner[], isManual: boolean) {
     const canvas = canvasRef.current;
@@ -110,6 +112,82 @@ export function CropScreen({ image, cropSource, uncertain, title, onApply, onRet
         ctx.fill();
       });
     }
+    if (magRef.current) drawMagnifier(ctx, W, H, s, current, magRef.current);
+  }
+
+  /**
+   * Loupe sous le doigt.
+   *
+   * Un pouce couvre une bonne centaine de pixels : impossible de poser un coin
+   * au pixel près en voyant seulement ce qui dépasse autour de l'ongle. La
+   * loupe montre la zone agrandie, avec une croix sur le point exact et les
+   * deux droites du cadre — c'est le repère qui permet de coller vraiment à
+   * l'arête. Elle se place dans le coin opposé au doigt pour ne rien masquer.
+   */
+  function drawMagnifier(
+    ctx: CanvasRenderingContext2D,
+    W: number,
+    H: number,
+    s: number,
+    quad: Corner[],
+    target: Corner
+  ) {
+    const R = Math.round(Math.min(W, H) * 0.2);
+    const M = Math.round(R * 0.25);
+    const tx = target.x * s;
+    const ty = target.y * s;
+    // Coin opposé au doigt, pour que la loupe ne tombe jamais sous la main.
+    const cx = tx < W / 2 ? W - R - M : R + M;
+    const cy = ty < H / 2 ? H - R - M : R + M;
+    const Z = 4;
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, 7);
+    ctx.closePath();
+    ctx.fillStyle = "#0b0a14";
+    ctx.fill();
+    ctx.clip();
+    ctx.imageSmoothingEnabled = false;
+    // La photo agrandie, centrée sur le coin visé.
+    ctx.drawImage(
+      stageImage,
+      cx - tx * Z,
+      cy - ty * Z,
+      stageImage.width * s * Z,
+      stageImage.height * s * Z
+    );
+    // Les deux droites du cadre qui se rejoignent sur ce coin.
+    ctx.strokeStyle = "rgba(139,124,248,0.95)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    quad.forEach((p, i) => {
+      const q = { x: cx + (p.x * s - tx) * Z, y: cy + (p.y * s - ty) * Z };
+      if (i === 0) ctx.moveTo(q.x, q.y);
+      else ctx.lineTo(q.x, q.y);
+    });
+    ctx.closePath();
+    ctx.stroke();
+    // Croix de visée : le point exact, sans rien masquer autour.
+    ctx.strokeStyle = "rgba(255,255,255,0.95)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(cx - R * 0.28, cy);
+    ctx.lineTo(cx - 5, cy);
+    ctx.moveTo(cx + 5, cy);
+    ctx.lineTo(cx + R * 0.28, cy);
+    ctx.moveTo(cx, cy - R * 0.28);
+    ctx.lineTo(cx, cy - 5);
+    ctx.moveTo(cx, cy + 5);
+    ctx.lineTo(cx, cy + R * 0.28);
+    ctx.stroke();
+    ctx.restore();
+
+    ctx.strokeStyle = "rgba(255,255,255,0.35)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, 7);
+    ctx.stroke();
   }
 
   useEffect(() => {
@@ -139,7 +217,9 @@ export function CropScreen({ image, cropSource, uncertain, title, onApply, onRet
     });
     if (bd < 60 / scaleRef.current) {
       dragRef.current = best;
+      magRef.current = corners[best];
       (e.target as Element).setPointerCapture(e.pointerId);
+      draw(corners, manual);
     }
   }
 
@@ -155,11 +235,15 @@ export function CropScreen({ image, cropSource, uncertain, title, onApply, onRet
       x: Math.max(0, Math.min(stageImage.width, p.x)),
       y: Math.max(0, Math.min(stageImage.height, p.y)),
     };
+    magRef.current = next[dragRef.current];
     setCorners(next);
   }
 
   function handlePointerUp() {
+    if (dragRef.current < 0) return;
     dragRef.current = -1;
+    magRef.current = null;
+    draw(corners, manual);
   }
 
   async function applyCrop() {
@@ -256,6 +340,7 @@ export function CropScreen({ image, cropSource, uncertain, title, onApply, onRet
       <div className="crop-stage">
         <canvas
           ref={canvasRef}
+          style={{ touchAction: "none" }}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}

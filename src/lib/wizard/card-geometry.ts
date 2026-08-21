@@ -807,32 +807,55 @@ function traceSilhouette(
     // la médiane de la bande juste à l'intérieur de la droite ajustée EST sa
     // couleur. Une différence de 6,5 suffit largement à trancher entre deux
     // références connues, là où elle ne suffisait pas contre un seuil fixe.
-    const learnCard = (at: (line: number) => number): [number, number, number] => {
-      const cr: number[] = [];
-      const cg: number[] = [];
-      const cb: number[] = [];
-      for (let line = 0; line < lines; line += 3) {
-        const base = at(line);
-        for (let s = base + 3; s < Math.min(base + 12, depth); s++) {
-          const p = read(line, Math.max(0, s));
-          if (!valid[p]) continue;
-          cr.push(d[p * 4]);
-          cg.push(d[p * 4 + 1]);
-          cb.push(d[p * 4 + 2]);
+    // Couleur du liseré, apprise PAR TRANCHES le long du côté — comme le fond.
+    //
+    // Une couleur unique pour tout le côté échoue pour la même raison : le
+    // liseré change de teinte avec l'éclairage. Mesuré sur la photo mobile de
+    // Remy (Mamanbo, 21 août 2026), au niveau d'une encoche : le liseré vaut
+    // rgb(155,158,151) à cet endroit, mais la moyenne du côté donnait
+    // rgb(122,127,122) — assez sombre pour que le liseré paraisse plus proche
+    // du fond que de la carte. La preuve au VRAI bord devenait négative
+    // (−0,62) et celle de la frontière imprimée positive (+0,91) : le contour
+    // n'avait aucune raison de choisir le bon bord.
+    const CARD_BLOCKS = 10;
+    const cardSpan = Math.max(24, Math.ceil(lines / CARD_BLOCKS));
+    const learnCard = (at: (line: number) => number): [number, number, number][] => {
+      const blocks: [number, number, number][] = [];
+      for (let b = 0; b * cardSpan < lines; b++) {
+        const cr: number[] = [];
+        const cg: number[] = [];
+        const cb: number[] = [];
+        for (let line = b * cardSpan; line < Math.min(lines, (b + 1) * cardSpan); line++) {
+          const base = at(line);
+          for (let s = base + 3; s < Math.min(base + 12, depth); s++) {
+            const p = read(line, Math.max(0, s));
+            if (!valid[p]) continue;
+            cr.push(d[p * 4]);
+            cg.push(d[p * 4 + 1]);
+            cb.push(d[p * 4 + 2]);
+          }
         }
+        blocks.push(cr.length ? [median(cr), median(cg), median(cb)] : [NaN, NaN, NaN]);
       }
-      return [median(cr), median(cg), median(cb)];
+      // Une tranche vide (hors carte, aux extrémités) reprend sa voisine.
+      for (let i = 0; i < blocks.length; i++) {
+        if (!Number.isNaN(blocks[i][0])) continue;
+        const near = blocks.find((b, j) => !Number.isNaN(b[0]) && Math.abs(j - i) <= 3) ?? blocks.find((b) => !Number.isNaN(b[0]));
+        blocks[i] = near ?? [0, 0, 0];
+      }
+      return blocks;
     };
+    const cardAt = (line: number) => cardBlocks[Math.min(cardBlocks.length - 1, Math.floor(line / cardSpan))];
     // Première estimation depuis la droite ajustée, corrigée ensuite (voir plus
     // bas) : si la droite s'est posée sur la frontière imprimée, cette bande
     // n'est pas le liseré mais l'illustration, et tout le raisonnement
     // s'inverse — la mauvaise arête devient la mieux notée.
-    let card = learnCard(() => pad);
+    let cardBlocks = learnCard(() => pad);
     // Écart entre les deux références : c'est l'unité dans laquelle on mesure
     // « plutôt liseré » ou « plutôt fond ». Un plancher évite de diviser par
     // presque rien quand les deux se ressemblent vraiment trop.
-    const sepOf = (b: [number, number, number]) =>
-      Math.max(12, Math.abs(card[0] - b[0]) + Math.abs(card[1] - b[1]) + Math.abs(card[2] - b[2]));
+    const sepOf = (c: [number, number, number], b: [number, number, number]) =>
+      Math.max(12, Math.abs(c[0] - b[0]) + Math.abs(c[1] - b[1]) + Math.abs(c[2] - b[2]));
 
     // Référence de marche : l'amplitude typique du bord sur ce côté.
     const peaks: number[] = [];
@@ -863,7 +886,8 @@ function traceSilhouette(
       // Remy : son bord haut est parfaitement droit, les encoches étaient les
       // nôtres.
       const bgL = bgAt(line);
-      const sepL = sepOf(bgL);
+      const cardL = cardAt(line);
+      const sepL = sepOf(cardL, bgL);
       for (let k = 0; k < depths; k++) {
         const s = start + k;
         const pa = read(line, Math.min(depth - 1, s + 1));
@@ -875,7 +899,7 @@ function traceSilhouette(
         for (let t = 0; t < 4; t++) {
           const p = read(line, Math.min(depth - 1, s + t));
           if (!valid[p]) continue;
-          inScore += dist3(p, bgL) - dist3(p, card);
+          inScore += dist3(p, bgL) - dist3(p, cardL);
           inN++;
         }
         // Le DEHORS est sondé PROFONDÉMENT, le dedans non.
@@ -898,7 +922,7 @@ function traceSilhouette(
         for (let t = 1; t <= 16; t += 2) {
           const p = read(line, Math.max(0, s - t));
           if (!valid[p]) continue;
-          outScore += dist3(p, card) - dist3(p, bgL);
+          outScore += dist3(p, cardL) - dist3(p, bgL);
           outN++;
         }
         const inside = inN ? inScore / inN / sepL : 0;
@@ -930,8 +954,7 @@ function traceSilhouette(
       // trompée, la médiane du côté reste celle de la majorité, donc la vraie
       // couleur du liseré. C'est cette référence corrigée qui permet à la
       // seconde passe de rejeter la frontière imprimée.
-      const relearned = learnCard((line) => Math.round(border[line]));
-      if (!Number.isNaN(relearned[0])) card = relearned;
+      cardBlocks = learnCard((line) => Math.round(border[line]));
     }
     return border;
   };

@@ -4,7 +4,14 @@ export function compressImage(blob: Blob): Promise<Blob> {
     const img = new Image();
     const url = URL.createObjectURL(blob);
     img.onload = () => {
-      const MAX = 2200;
+      // Plafond de travail. Mesuré sur la photo mobile de Remy (21 août 2026) :
+      // sa carte fait 886 px de large dans une photo de 2160×2880. Ramenée à
+      // 2200, la photo est réduite d'un quart et la carte tombe à 677 px —
+      // alors que le rendu la redessine à 725 px. On JETAIT donc du détail
+      // pour ensuite l'agrandir, ce qui explique une bonne part de l'aspect
+      // mou du visuel final. À 3400, sa carte garde ses 886 px et le rendu ne
+      // fait plus que réduire, ce qui est toujours net.
+      const MAX = 3400;
       let w = img.width;
       let h = img.height;
       if (w > MAX || h > MAX) {

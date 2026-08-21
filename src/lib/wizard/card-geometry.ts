@@ -760,7 +760,12 @@ function traceSilhouette(
   const cardW = PW - pad * 2;
   const cardH = PH - pad * 2;
   const bite = Math.round(Math.min(cardW, cardH) * MAX_BITE_RATIO);
-  const bulge = Math.round(Math.min(cardW, cardH) * MAX_BULGE_RATIO);
+  // La fenêtre vers l'extérieur va jusqu'au bord de la marge rendue. Bornée à
+  // 2 % comme avant, elle ne pouvait PAS atteindre l'arête quand la droite
+  // ajustée s'était posée sur la frontière de la zone imprimée, 27 px plus
+  // dedans : le vrai bord tombait hors de portée, et le relevé n'avait d'autre
+  // choix que de rogner le liseré (marches vues par Remy le 21 août 2026).
+  const bulge = Math.max(Math.round(Math.min(cardW, cardH) * MAX_BULGE_RATIO), pad - 2);
 
   const strip = Math.max(2, Math.round(pad * 0.5));
   const sampleBg = (x0: number, x1: number, y0: number, y1: number): [number, number, number] => {
@@ -785,7 +790,7 @@ function traceSilhouette(
 
   const scanSide = (
     lines: number,
-    bg: [number, number, number],
+    bgAt: (line: number) => [number, number, number],
     read: (line: number, step: number) => number
   ): Float32Array => {
     const start = Math.max(0, pad - bulge);
@@ -802,26 +807,32 @@ function traceSilhouette(
     // la médiane de la bande juste à l'intérieur de la droite ajustée EST sa
     // couleur. Une différence de 6,5 suffit largement à trancher entre deux
     // références connues, là où elle ne suffisait pas contre un seuil fixe.
-    const cr: number[] = [];
-    const cg: number[] = [];
-    const cb: number[] = [];
-    for (let line = 0; line < lines; line += 3) {
-      for (let s = pad + 3; s < Math.min(pad + 12, depth); s++) {
-        const p = read(line, s);
-        if (!valid[p]) continue;
-        cr.push(d[p * 4]);
-        cg.push(d[p * 4 + 1]);
-        cb.push(d[p * 4 + 2]);
+    const learnCard = (at: (line: number) => number): [number, number, number] => {
+      const cr: number[] = [];
+      const cg: number[] = [];
+      const cb: number[] = [];
+      for (let line = 0; line < lines; line += 3) {
+        const base = at(line);
+        for (let s = base + 3; s < Math.min(base + 12, depth); s++) {
+          const p = read(line, Math.max(0, s));
+          if (!valid[p]) continue;
+          cr.push(d[p * 4]);
+          cg.push(d[p * 4 + 1]);
+          cb.push(d[p * 4 + 2]);
+        }
       }
-    }
-    const card: [number, number, number] = [median(cr), median(cg), median(cb)];
+      return [median(cr), median(cg), median(cb)];
+    };
+    // Première estimation depuis la droite ajustée, corrigée ensuite (voir plus
+    // bas) : si la droite s'est posée sur la frontière imprimée, cette bande
+    // n'est pas le liseré mais l'illustration, et tout le raisonnement
+    // s'inverse — la mauvaise arête devient la mieux notée.
+    let card = learnCard(() => pad);
     // Écart entre les deux références : c'est l'unité dans laquelle on mesure
     // « plutôt liseré » ou « plutôt fond ». Un plancher évite de diviser par
     // presque rien quand les deux se ressemblent vraiment trop.
-    const separation = Math.max(
-      12,
-      Math.abs(card[0] - bg[0]) + Math.abs(card[1] - bg[1]) + Math.abs(card[2] - bg[2])
-    );
+    const sepOf = (b: [number, number, number]) =>
+      Math.max(12, Math.abs(card[0] - b[0]) + Math.abs(card[1] - b[1]) + Math.abs(card[2] - b[2]));
 
     // Référence de marche : l'amplitude typique du bord sur ce côté.
     const peaks: number[] = [];
@@ -842,8 +853,17 @@ function traceSilhouette(
     // Trois indices additionnés — la marche de luminosité, la matière au-dedans
     // qui ressemble au liseré, la matière au-dehors qui ressemble au fond.
     const evidence = new Float32Array(lines * depths);
+    const fillEvidence = () => {
     for (let line = 0; line < lines; line++) {
       const base = line * depths;
+      // Fond mesuré À CETTE HAUTEUR-LÀ, pas une couleur unique pour tout le
+      // côté. L'éclairage varie le long du bord : là où la table s'assombrit,
+      // elle ressemble au liseré, « dehors = fond » devient faux, et le contour
+      // battait en retraite vers la frontière imprimée. Vérifié sur la photo de
+      // Remy : son bord haut est parfaitement droit, les encoches étaient les
+      // nôtres.
+      const bgL = bgAt(line);
+      const sepL = sepOf(bgL);
       for (let k = 0; k < depths; k++) {
         const s = start + k;
         const pa = read(line, Math.min(depth - 1, s + 1));
@@ -855,34 +875,102 @@ function traceSilhouette(
         for (let t = 0; t < 4; t++) {
           const p = read(line, Math.min(depth - 1, s + t));
           if (!valid[p]) continue;
-          inScore += dist3(p, bg) - dist3(p, card);
+          inScore += dist3(p, bgL) - dist3(p, card);
           inN++;
         }
+        // Le DEHORS est sondé PROFONDÉMENT, le dedans non.
+        //
+        // Mesuré sur l'export mobile de Remy (Mamanbo, liseré argenté sur fond
+        // clair, 21 août 2026) : sur une portion du bord gauche, le contour
+        // s'installait 30 px À L'INTÉRIEUR, sur la frontière de la zone
+        // imprimée — le liseré était rogné là, conservé ailleurs, d'où les
+        // marches grises visibles dans le rendu. Les deux positions offraient
+        // une marche de luminosité comparable, et quatre pixels de sonde ne
+        // suffisaient pas à les départager.
+        //
+        // Ce qui les sépare vraiment : au-delà du VRAI bord il n'y a plus que
+        // du fond, sur toute la profondeur ; au-delà de la frontière imprimée,
+        // il y a encore 30 px de LISERÉ, c'est-à-dire de la carte. Sonder loin
+        // vers l'extérieur rend donc la frontière interne franchement coûteuse,
+        // là où quatre pixels la laissaient passer.
         let outScore = 0;
         let outN = 0;
-        for (let t = 1; t <= 4; t++) {
+        for (let t = 1; t <= 16; t += 2) {
           const p = read(line, Math.max(0, s - t));
           if (!valid[p]) continue;
-          outScore += dist3(p, card) - dist3(p, bg);
+          outScore += dist3(p, card) - dist3(p, bgL);
           outN++;
         }
-        const inside = inN ? inScore / inN / separation : 0;
-        const outside = outN ? outScore / outN / separation : 0;
-        evidence[base + k] =
-          Math.min(1.6, grad / gRef) + 0.9 * Math.max(-1, Math.min(1, inside)) + 0.9 * Math.max(-1, Math.min(1, outside));
+        const inside = inN ? inScore / inN / sepL : 0;
+        const outside = outN ? outScore / outN / sepL : 0;
+        // Les deux conditions doivent tenir ENSEMBLE, d'où le minimum et non la
+        // somme. Une somme se laisse acheter par un seul terme : dans le fond,
+        // « dehors = fond » était vrai et payait plus cher que « dedans =
+        // carte » ne coûtait, donc le contour dérivait vers l'extérieur ; sur
+        // la frontière imprimée, « dedans = carte » était vrai et compensait le
+        // dehors qui, lui, était encore du liseré. Le minimum ferme les deux
+        // portes à la fois : il faut du fond dehors ET de la matière dedans.
+        const both = Math.min(
+          Math.max(-1, Math.min(1, inside)),
+          Math.max(-1, Math.min(1, outside))
+        );
+        evidence[base + k] = Math.min(1.6, grad / gRef) + 2.2 * both;
       }
     }
+    };
 
-    const path = solveContour(evidence, lines, depths, CONTOUR_STIFFNESS);
     const border = new Float32Array(lines);
-    for (let i = 0; i < lines; i++) border[i] = start + path[i];
+    for (let pass = 0; pass < 2; pass++) {
+      fillEvidence();
+      const path = solveContour(evidence, lines, depths, CONTOUR_STIFFNESS);
+      for (let i = 0; i < lines; i++) border[i] = start + path[i];
+      if (pass === 1) break;
+      // La couleur du liseré est réapprise SUR LE CONTOUR OBTENU, ligne par
+      // ligne — plus sur la droite ajustée. Même si une portion du contour s'est
+      // trompée, la médiane du côté reste celle de la majorité, donc la vraie
+      // couleur du liseré. C'est cette référence corrigée qui permet à la
+      // seconde passe de rejeter la frontière imprimée.
+      const relearned = learnCard((line) => Math.round(border[line]));
+      if (!Number.isNaN(relearned[0])) card = relearned;
+    }
     return border;
   };
 
-  const left = scanSide(PH, sampleBg(0, strip, 0, PH), (y, s) => y * PW + s);
-  const right = scanSide(PH, sampleBg(PW - strip, PW, 0, PH), (y, s) => y * PW + (PW - 1 - s));
-  const top = scanSide(PW, sampleBg(0, PW, 0, strip), (x, s) => s * PW + x);
-  const bottom = scanSide(PW, sampleBg(0, PW, PH - strip, PH), (x, s) => (PH - 1 - s) * PW + x);
+  // Fond échantillonné par tranches le long de chaque côté, puis interpolé :
+  // il suit les variations d'éclairage au lieu de les moyenner.
+  const localBg = (
+    lines: number,
+    band: (from: number, to: number) => [number, number, number]
+  ): ((line: number) => [number, number, number]) => {
+    const STEPS = 12;
+    const span = Math.max(8, Math.ceil(lines / STEPS));
+    const cache: [number, number, number][] = [];
+    for (let i = 0; i * span < lines; i++) {
+      cache.push(band(i * span, Math.min(lines, (i + 1) * span)));
+    }
+    return (line) => cache[Math.min(cache.length - 1, Math.floor(line / span))];
+  };
+
+  const left = scanSide(
+    PH,
+    localBg(PH, (a, b) => sampleBg(0, strip, a, b)),
+    (y, s) => y * PW + s
+  );
+  const right = scanSide(
+    PH,
+    localBg(PH, (a, b) => sampleBg(PW - strip, PW, a, b)),
+    (y, s) => y * PW + (PW - 1 - s)
+  );
+  const top = scanSide(
+    PW,
+    localBg(PW, (a, b) => sampleBg(a, b, 0, strip)),
+    (x, s) => s * PW + x
+  );
+  const bottom = scanSide(
+    PW,
+    localBg(PW, (a, b) => sampleBg(a, b, PH - strip, PH)),
+    (x, s) => (PH - 1 - s) * PW + x
+  );
 
   // Alpha = intersection des 4 contraintes, en couverture sous-pixel (bord
   // net mais non crénelé). Un coin, arrondi ou carré, sort naturellement de

@@ -659,6 +659,9 @@ function median(a: number[]): number {
  */
 const CONTOUR_STIFFNESS = 0.42;
 
+/** Coût de l'écart à la droite ajustée, à pleine profondeur d'éclat. */
+const STRAIGHT_PULL = 2.6;
+
 /**
  * Relève le contour d'un côté EN UNE SEULE FOIS, et non ligne par ligne.
  *
@@ -787,6 +790,26 @@ function traceSilhouette(
   const lum = (p: number) => 0.299 * d[p * 4] + 0.587 * d[p * 4 + 1] + 0.114 * d[p * 4 + 2];
   const dist3 = (p: number, c: [number, number, number]) =>
     Math.abs(d[p * 4] - c[0]) + Math.abs(d[p * 4 + 1] - c[1]) + Math.abs(d[p * 4 + 2] - c[2]);
+
+  /**
+   * Distance au fond qui TOLÈRE L'OMBRE — réservée à ce qu'on trouve DEHORS.
+   *
+   * Une ombre portée, c'est le fond en plus sombre : même teinte, moins de
+   * lumière. Si on la compte comme de la matière, le contour la garde et la
+   * carte se retrouve cernée d'un liseré sombre (constaté par Remy le 21 août
+   * 2026 en haut à droite de son Mamanbo). On ne mesure donc, dehors, que
+   * l'écart de TEINTE et l'excès de clarté ; l'assombrissement seul ne compte
+   * pas. Le DEDANS, lui, garde la distance complète : à l'intérieur de la
+   * carte il n'y a pas d'ombre portée, et un liseré gris se distingue
+   * justement du fond par sa luminosité.
+   */
+  const distBgSoft = (p: number, bg: [number, number, number]) => {
+    const dr = d[p * 4] - bg[0];
+    const dg = d[p * 4 + 1] - bg[1];
+    const db = d[p * 4 + 2] - bg[2];
+    const m = (dr + dg + db) / 3;
+    return Math.abs(dr - m) + Math.abs(dg - m) + Math.abs(db - m) + Math.max(0, m) * 1.5;
+  };
 
   const scanSide = (
     lines: number,
@@ -922,7 +945,7 @@ function traceSilhouette(
         for (let t = 1; t <= 16; t += 2) {
           const p = read(line, Math.max(0, s - t));
           if (!valid[p]) continue;
-          outScore += dist3(p, cardL) - dist3(p, bgL);
+          outScore += dist3(p, cardL) - distBgSoft(p, bgL);
           outN++;
         }
         const inside = inN ? inScore / inN / sepL : 0;
@@ -938,7 +961,15 @@ function traceSilhouette(
           Math.max(-1, Math.min(1, inside)),
           Math.max(-1, Math.min(1, outside))
         );
-        evidence[base + k] = Math.min(1.6, grad / gRef) + 2.2 * both;
+        // RAPPEL À LA DROITE. Un côté de carte EST une droite : les défauts
+        // physiques sont locaux (un choc, un coin corné), jamais une ondulation
+        // répartie sur toute la longueur. S'écarter de la droite ajustée doit
+        // donc se PAYER, et seule une preuve locale forte peut le justifier —
+        // c'est ce qui rend les côtés francs au lieu de légèrement tremblants.
+        // Le rappel est plafonné : au-delà, un éclat profond ne serait plus
+        // jamais atteignable.
+        const ecart = Math.min(Math.abs(s - pad), bite) / bite;
+        evidence[base + k] = Math.min(1.6, grad / gRef) + 2.2 * both - STRAIGHT_PULL * ecart;
       }
     }
     };
